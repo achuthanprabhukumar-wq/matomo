@@ -625,6 +625,33 @@ class FrontController extends Singleton
          */
         Piwik::postEvent('Request.dispatch', array(&$module, &$action, &$parameters));
 
+        // Enforce login for UI (non-API, non-tracker, non-CLI) requests: redirect anonymous users
+        // to the configured login plugin. We skip this for API/Tracker/CLI and for a few
+        // special public endpoints like Installation assets and the opt-out iframe.
+        try {
+            if (
+                !Common::isPhpCliMode()
+                && !\Piwik\API\Request::isRootRequestApiRequest()
+                && !SettingsServer::isTrackerApiRequest()
+            ) {
+                // Allow access to login plugin and installation assets and opt-out endpoints
+                $loginPlugin = Piwik::getLoginPluginName();
+                $isInstallationAsset = ($module === 'Installation' && in_array($action, array('getInstallationCss', 'getInstallationJs')));
+                $isOptOut = ($module === 'CoreAdminHome' && ($action === 'optOut' || $action === 'optOutJS'));
+
+                if (Piwik::isUserIsAnonymous()
+                    && $module !== $loginPlugin
+                    && !$isInstallationAsset
+                    && !$isOptOut
+                ) {
+                    Piwik::redirectToModule($loginPlugin, 'index');
+                }
+            }
+        } catch (Exception $e) {
+            // If any check fails, do not block dispatch; let the normal flow/error handling continue
+            Log::debug($e);
+        }
+
         /** @var ControllerResolver $controllerResolver */
         $controllerResolver = StaticContainer::get('Piwik\Http\ControllerResolver');
 

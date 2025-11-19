@@ -233,6 +233,12 @@ class Controller extends \Piwik\Plugin\Controller
 
     public function index()
     {
+        // If the visitor is the anonymous user, redirect them to the login page
+        // This prevents the dashboard from being shown to unauthenticated users.
+        if (Piwik::isUserIsAnonymous()) {
+            Piwik::redirectToModule(Piwik::getLoginPluginName(), 'index');
+        }
+
         $this->setDateTodayIfWebsiteCreatedToday();
         $view = $this->getDefaultIndexView();
         return $view->render();
