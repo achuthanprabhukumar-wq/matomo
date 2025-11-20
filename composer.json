@@ -41,13 +41,6 @@
     ],
     "require": {
         "php": ">=7.2.5",
-        "ext-pdo_mysql": "*",
-        "ext-mysqli": "*",
-        "ext-mbstring": "*",
-        "ext-gd": "*",
-        "ext-curl": "*",
-        "ext-zip": "*",
-        "ext-openssl": "*",
         "composer/ca-bundle": "^1.2",
         "composer/semver": "^3.0",
         "davaxi/sparkline": "~2.0",
