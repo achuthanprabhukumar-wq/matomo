@@ -1,5 +1,6 @@
 {
     "CoreHome": {
+        "AIInsights": "AI Insights",
         "CategoryNoData": "No data in this category. Try to \"Include all population\".",
         "ChangeVisualization": "Change visualization",
         "ChangePeriod": "Change period",
@@ -52,8 +53,22 @@
         "NoPrivilegesAskPiwikAdmin": "You are logged in as '%1$s' but it seems you don't have any permission set in Matomo. %2$s Ask your Matomo administrator (click to email)%3$s to give you 'view' access to a website.",
         "OnlyForSuperUserAccess": "This widget is displayed in the default dashboard only to users having Super User access.",
         "PeriodRange": "Range",
+        "PresetDateToday": "Today",
+        "PresetDateYesterday": "Yesterday",
+        "PresetDateLast7Days": "Last 7 days",
+        "PresetDateLast30Days": "Last 30 days",
+        "PresetDateLast90Days": "Last 90 days",
+        "PresetDateLastWeekMonSun": "Last week (Mon - Sun)",
+        "PresetDateLastMonth": "Last month",
+        "PresetDateLastQuarter": "Last quarter",
+        "PresetDateLastYear": "Last year",
+        "PresetDateThisWeekMonToday": "This week (Mon - Today)",
+        "PresetDateThisMonth": "This month",
+        "PresetDateThisQuarter": "This quarter",
+        "PresetDateThisYear": "This year",
         "ReportGeneratedOn": "Report generated on %s",
         "ReportGeneratedXAgo": "Report generated %s ago",
+        "ReportConfigure": "Configure this report",
         "SharePiwikLong": "Hi! I just found a great piece of free software: Matomo!\n\nMatomo will let you track visitors to your website for free. You should definitely check it out!",
         "SharePiwikShort": "Matomo! Free\/libre web analytics. Own your data.",
         "ShareThis": "Share this",
@@ -137,6 +152,7 @@
         "ChooseWebsite": "Choose website",
         "CopyModalNote": "%1$sNote:%2$s The copied %3$s may need adjustments if it includes references specific to the original website. Review settings to ensure compatibility.",
         "CopyX": "Copy %1$s",
-        "CopyXDescription": "Select the website to copy this %1$s to. This will create an exact copy, including settings, in the chosen site."
+        "CopyXDescription": "Select the website to copy this %1$s to. This will create an exact copy, including settings, in the chosen site.",
+        "InvalidComparisonDateRange": "Enter a valid comparison date range."
     }
 }

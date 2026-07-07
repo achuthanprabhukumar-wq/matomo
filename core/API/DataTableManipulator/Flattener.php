@@ -105,9 +105,12 @@ class Flattener extends DataTableManipulator
     }
 
     /**
-     * @param $dataTable DataTable
-     * @param $newDataTable
-     * @param $dimensionName
+     * @param DataTable $dataTable
+     * @param DataTable $newDataTable
+     * @param int $level
+     * @param string $dimensionName
+     * @param string $prefix
+     * @param string|false $logo
      */
     protected function flattenDataTableInto($dataTable, $newDataTable, $level, $dimensionName, $prefix = '', $logo = false)
     {
@@ -117,11 +120,11 @@ class Flattener extends DataTableManipulator
     }
 
     /**
-     * @param Row $row
-     * @param DataTable $dataTable
-     * @param string $labelPrefix
+     * @param int|string $rowId
+     * @param int $level
      * @param string $dimensionName
-     * @param bool $parentLogo
+     * @param string $labelPrefix
+     * @param string|false $parentLogo
      */
     private function flattenRow(
         Row $row,

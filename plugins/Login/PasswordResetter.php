@@ -21,6 +21,7 @@ use Piwik\Plugins\Login\Emails\PasswordResetEmail;
 use Piwik\Plugins\Login\Emails\PasswordResetCancelEmail;
 use Piwik\Plugins\UsersManager\API as UsersManagerAPI;
 use Piwik\Plugins\UsersManager\Model;
+use Piwik\Plugins\UsersManager\UserLoginHelper;
 use Piwik\Plugins\UsersManager\UsersManager;
 use Piwik\Plugins\UsersManager\UserUpdater;
 use Piwik\SettingsPiwik;
@@ -43,7 +44,7 @@ use Piwik\Url;
  *    a controller action that finishes the password reset process.
  * 5. When the link is clicked, PasswordResetter will update the user's password
  *    and remove the Option stored earlier. This is accomplished by
- *    {@link confirmNewPassword()}.
+ *    {@link setHashedPasswordForLogin()}.
  *
  * Note: this class does not contain any controller logic so it won't directly
  * handle certain requests. Controllers should call the appropriate methods.
@@ -115,8 +116,6 @@ class PasswordResetter
     private $emailFromAddress;
 
     /**
-     * Constructor.
-     *
      * @param UsersManagerAPI|null $usersManagerApi
      * @param string|null $confirmPasswordModule
      * @param string|null $confirmPasswordAction
@@ -213,7 +212,7 @@ class PasswordResetter
         $this->checkNewPassword($newPassword);
 
         // 'anonymous' has no password and cannot be reset
-        if ($loginOrEmail === 'anonymous') {
+        if (strtolower($loginOrEmail) === 'anonymous') {
             throw new Exception(Piwik::translate('Login_InvalidUsernameEmail'));
         }
 
@@ -275,17 +274,11 @@ class PasswordResetter
     }
 
     /**
-     * Confirms a password reset. This should be called after {@link initiatePasswordResetProcess()}
-     * is called.
+     * Sets the given already-hashed password as the specified user's password (executed as super
+     * user, so it can run before the user is authenticated during a password reset).
      *
-     * This method will get the new password associated with a reset token and set it
-     * as the specified user's password.
-     *
-     * @param string $login The login of the user whose password is being reset.
-     * @param string $passwordHash The generated string token contained in the reset password
-     *                           email.
-     * @throws Exception If there is no user with login '$login', if $resetToken is not a
-     *                   valid token or if the token has expired.
+     * @param string $login The login of the user whose password is being set.
+     * @param string $passwordHash The already-hashed password to set for the user.
      */
     public function setHashedPasswordForLogin(
         $login,
@@ -467,8 +460,8 @@ class PasswordResetter
      *
      * Derived classes can override this method to provide custom user querying logic.
      *
-     * @param string $loginMail user login or email address
-     * @return array `array("login" => '...', "email" => '...', "password" => '...')` or null, if user not found.
+     * @param string $loginOrMail user login or email address
+     * @return array<string, mixed>|null `array("login" => '...', "email" => '...', "password" => '...')` or null, if user not found.
      */
     protected function getUserInformation($loginOrMail)
     {
@@ -478,14 +471,7 @@ class PasswordResetter
             return null;
         }
 
-        $user = null;
-
-        if ($userModel->userExists($loginOrMail)) {
-            $user = $userModel->getUser($loginOrMail);
-        } elseif ($userModel->userEmailExists($loginOrMail)) {
-            $user = $userModel->getUserByEmail($loginOrMail);
-        }
-        return $user;
+        return UserLoginHelper::findUserByLoginOrEmail($loginOrMail);
     }
 
     /**

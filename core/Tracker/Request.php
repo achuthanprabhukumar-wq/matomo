@@ -25,6 +25,8 @@ use Piwik\ProxyHttp;
 use Piwik\Segment\SegmentExpression;
 use Piwik\Tracker;
 use Piwik\Cache as PiwikCache;
+use Piwik\Tracker\Cache as TrackerCache;
+use Piwik\Plugins\UserId\Settings\UserIdDisabled;
 
 /**
  * The Request object holding the http parameters for this tracking request. Use getParam() to fetch a named parameter.
@@ -54,7 +56,7 @@ class Request
      * whatever they want in this array, and other RequestProcessors can modify these
      * values to change tracker behavior.
      *
-     * @var string[][]
+     * @var array<string, array<string, mixed>> Keyed by plugin name, then metadata key.
      */
     private $requestMetadata = array();
 
@@ -98,8 +100,9 @@ class Request
         // check for 4byte utf8 characters in all tracking params and replace them with � if not support by database
         $this->params = $this->replaceUnsupportedUtf8Chars($this->params);
 
-        $this->customTimestampDoesNotRequireTokenauthWhenNewerThan = (int) TrackerConfig::getConfigValue(
+        $this->customTimestampDoesNotRequireTokenauthWhenNewerThan = TrackerConfig::getIntegerConfigValue(
             'tracking_requests_require_authentication_when_custom_timestamp_newer_than',
+            0,
             $this->getIdSiteIfExists()
         );
     }
@@ -202,7 +205,10 @@ class Request
             if ($this->isAuthenticated) {
                 Common::printDebug("token_auth is authenticated!");
             } else {
-                StaticContainer::get('Piwik\Tracker\Failures')->logFailure(Failures::FAILURE_ID_NOT_AUTHENTICATED, $this);
+                if (preg_match('/^\w{28,36}$/', $tokenAuth) || empty($tokenAuth)) {
+                    // only log a failure if the token auth looks partial valid or is completely missing
+                    StaticContainer::get('Piwik\Tracker\Failures')->logFailure(Failures::FAILURE_ID_NOT_AUTHENTICATED, $this);
+                }
             }
         } else {
             $this->isAuthenticated = true;
@@ -570,7 +576,7 @@ class Request
     }
 
     /**
-     * Returns true if the timestamp is valid ie. timestamp is sometime in the last 10 years and is not in the future.
+     * Returns true if the timestamp is valid ie. timestamp is sometime in the last 20 years and is not in the future.
      *
      * @param $time int Timestamp to test
      * @param $now int Current timestamp
@@ -853,11 +859,24 @@ class Request
     public function getForcedUserId()
     {
         $userId = $this->getParam('uid');
-        if (strlen($userId) > 0) {
-            return $userId;
+        if (strlen($userId) === 0) {
+            return false;
         }
 
-        return false;
+        try {
+            $idSite = $this->getIdSite();
+            if (!empty($idSite) && $idSite > 0) {
+                $cache    = TrackerCache::getCacheWebsiteAttributes($idSite);
+                $cacheKey = UserIdDisabled::class;
+                if (($cache[$cacheKey] ?? false) === true) {
+                    return false;
+                }
+            }
+        } catch (\Exception $e) {
+            // Might fail for e.g. not existing sites, but we do not want to throw an exception at this stage
+        }
+
+        return $userId;
     }
 
     public function getForcedVisitorId()

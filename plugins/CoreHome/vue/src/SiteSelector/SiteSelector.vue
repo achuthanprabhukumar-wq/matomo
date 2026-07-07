@@ -28,10 +28,6 @@
       v-tooltips
       :title="selectorLinkTitle"
     >
-      <span
-        class="icon icon-chevron-down"
-        :class="{'iconHidden': isLoading, 'collapsed': !showSitesList}"
-      />
       <span>
         <span
           v-text="displayedModelValue?.name || firstSiteName"
@@ -42,6 +38,10 @@
           class="placeholder"
         >{{ placeholder }}</span>
       </span>
+      <span
+        class="icon icon-chevron-down"
+        :class="{'iconHidden': isLoading, 'collapsed': !showSitesList}"
+      />
     </a>
     <div
       v-show="showSitesList"
@@ -257,7 +257,7 @@ export default defineComponent({
     },
     selectorLinkTitle() {
       return this.hasMultipleSites && this.displayedModelValue
-        ? translate('CoreHome_ChangeCurrentWebsite', this.displayedModelValue.name)
+        ? translate('CoreHome_ChangeCurrentWebsite', this.htmlEntities(this.displayedModelValue.name))
         : '';
     },
     hasMultipleSites() {

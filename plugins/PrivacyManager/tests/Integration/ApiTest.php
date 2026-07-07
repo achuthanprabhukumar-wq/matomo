@@ -9,11 +9,13 @@
 
 namespace Piwik\Plugins\PrivacyManager\tests\Integration;
 
+use Exception;
 use Piwik\Access;
-use Piwik\Config;
 use Piwik\Container\StaticContainer;
 use Piwik\NoAccessException;
+use Piwik\Policy\CnilPolicy;
 use Piwik\Plugins\PrivacyManager\API;
+use Piwik\Plugins\PrivacyManager\Settings\IpAddressMaskLength;
 use Piwik\Tests\Framework\Fixture;
 use Piwik\Tests\Framework\Mock\FakeAccess;
 use Piwik\Tests\Framework\TestCase\IntegrationTestCase;
@@ -45,24 +47,8 @@ class ApiTest extends IntegrationTestCase
         $this->api = API::getInstance();
     }
 
-    public function testSetComplianceStatusThrowsExceptionIfFeatureFlagDisabled(): void
-    {
-        $container = StaticContainer::getContainer();
-        $container->get(Config::class)->FeatureFlags = ['PrivacyCompliance_feature' => 'disabled'];
-
-        $this->expectExceptionMessage('Feature not available');
-        $this->api->setComplianceStatus(
-            (string) $this->siteId,
-            'cnil_v1',
-            true
-        );
-    }
-
     public function testSetComplianceStatusThrowsExceptionIfInvalidComplianceType(): void
     {
-        $container = StaticContainer::getContainer();
-        $container->get(Config::class)->FeatureFlags = ['PrivacyCompliance_feature' => 'enabled'];
-
         $this->expectExceptionMessage('Invalid compliance type');
         $this->api->setComplianceStatus(
             (string) $this->siteId,
@@ -73,10 +59,7 @@ class ApiTest extends IntegrationTestCase
 
     public function testSetComplianceStatusThrowsExceptionIfUserDoesntHaveSuperAdmin(): void
     {
-        $container = StaticContainer::getContainer();
-        $container->get(Config::class)->FeatureFlags = ['PrivacyCompliance_feature' => 'enabled'];
-
-        $fakeAccess = $container->get(Access::class);
+        $fakeAccess = StaticContainer::getContainer()->get(Access::class);
         $fakeAccess->setSuperUserAccess(false);
 
         $this->expectException(NoAccessException::class);
@@ -90,16 +73,83 @@ class ApiTest extends IntegrationTestCase
 
     public function testSetComplianceStatusReturnsTheNewStateIfEnabled(): void
     {
-        $container = StaticContainer::getContainer();
-        $container->get(Config::class)->FeatureFlags = ['PrivacyCompliance_feature' => 'enabled'];
+        $complianceType = 'cnil_v1';
 
         $result = $this->api->setComplianceStatus(
             (string) $this->siteId,
-            'cnil_v1',
+            $complianceType,
             true
         );
 
-        $this->assertTrue($result);
+        $complianceStatus = $this->api->getComplianceStatus($this->siteId, $complianceType);
+        $this->assertTrue($complianceStatus['complianceModeEnforced']);
+    }
+
+    public function testSetComplianceStatusDoesNotRequirePasswordWhenPostSessionFlagIsZeroEvenIfGetFlagIsOne(): void
+    {
+        $_GET['force_api_session'] = 1;
+        $_POST['token_auth'] = 'postToken';
+        $_POST['force_api_session'] = 0;
+
+        try {
+            $result = $this->api->setComplianceStatus(
+                (string) $this->siteId,
+                'cnil_v1',
+                true
+            );
+
+            $this->assertTrue($result);
+        } finally {
+            unset($_GET['force_api_session']);
+            unset($_POST['token_auth']);
+            unset($_POST['force_api_session']);
+        }
+    }
+
+    public function testSetComplianceStatusRequiresPasswordWhenPostSessionFlagIsOneEvenIfGetFlagIsZero(): void
+    {
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('UsersManager_ConfirmWithReAuthentication');
+
+        $_GET['force_api_session'] = 0;
+        $_POST['token_auth'] = 'postToken';
+        $_POST['force_api_session'] = 1;
+
+        try {
+            $this->api->setComplianceStatus(
+                (string) $this->siteId,
+                'cnil_v1',
+                true
+            );
+        } finally {
+            unset($_GET['force_api_session']);
+            unset($_POST['token_auth']);
+            unset($_POST['force_api_session']);
+        }
+    }
+
+    public function testIpAddressMaskLengthComplianceUsesCurrentMaskLengthWhenIpAnonymizationIsDisabled(): void
+    {
+        $anonymizeIp = true;
+        $maskLength = 3;
+        $this->api->setAnonymizeIpSettings(
+            $anonymizeIp,
+            $maskLength,
+            true
+        );
+
+        $this->assertSame(3, IpAddressMaskLength::getCustomValue());
+        $this->assertTrue(IpAddressMaskLength::isCompliant(CnilPolicy::class, $this->siteId));
+
+        $anonymizeIp = false;
+        $this->api->setAnonymizeIpSettings(
+            $anonymizeIp,
+            $maskLength,
+            true
+        );
+
+        $this->assertSame($maskLength, IpAddressMaskLength::getCustomValue());
+        $this->assertFalse(IpAddressMaskLength::isCompliant(CnilPolicy::class, $this->siteId));
     }
 
     public function provideContainerConfig()

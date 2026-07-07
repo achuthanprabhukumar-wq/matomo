@@ -48,6 +48,38 @@ class LoaderTest extends IntegrationTestCase
         Fixture::createWebsite('2012-02-03 00:00:00');
     }
 
+    public function testDidReuseArchiveFlagIsOnlySetWhenReusingArchiveFromDb()
+    {
+        $_GET['trigger'] = 'archivephp';
+
+        $idSite = 1;
+        $dateTime = '2024-01-01 12:00:00';
+        $date = '2024-01-01';
+
+        $t = Fixture::getTracker($idSite, $dateTime);
+        $t->setUrl('http://example.com/');
+        Fixture::checkResponse($t->doTrackPageView('test'));
+
+        $periodObj = Factory::build('day', $date);
+
+        $params = new Parameters(new Site($idSite), $periodObj, new Segment('', [$idSite]));
+        $loader = new Loader($params);
+        $result = $loader->prepareArchive('VisitsSummary');
+
+        $this->assertFalse($loader->didReuseArchive(), 'Expected first archiving run to generate a new archive.');
+        $this->assertNotEmpty($result);
+        $this->assertNotEmpty($result[0]);
+
+        Cache::flushAll();
+
+        $params = new Parameters(new Site($idSite), $periodObj, new Segment('', [$idSite]));
+        $loader = new Loader($params);
+        $result = $loader->prepareArchive('VisitsSummary');
+
+        $this->assertTrue($loader->didReuseArchive(), 'Expected second archiving run to reuse the existing DB archive.');
+        $this->assertSame(1, (int) $result[0][0], 'Expected second archiving run to return the same archive ids.');
+    }
+
     public function testPluginOnlyArchivingDoesNotRelaunchChildArchives()
     {
         $_GET['pluginOnly'] = 1;
@@ -209,6 +241,22 @@ class LoaderTest extends IntegrationTestCase
                 'date2' => '2020-01-20',
                 'period' => '1',
             ],
+            [
+                'idarchive' => '6',
+                'name' => 'done6e9408519429f50e0541146e88fd262d.VisitsSummary',
+                'value' => '1',
+                'date1' => '2020-01-20',
+                'date2' => '2020-01-20',
+                'period' => '1',
+            ],
+            [
+                'idarchive' => '7',
+                'name' => 'done69c0d64c636303b5773a21832cf7e301.VisitsSummary',
+                'value' => '1',
+                'date1' => '2020-01-20',
+                'date2' => '2020-01-20',
+                'period' => '1',
+            ],
         ], $existingArchives);
 
         // clear all caches used in archiving to avoid falsely skipping an archive
@@ -273,10 +321,26 @@ class LoaderTest extends IntegrationTestCase
                 'date2' => '2020-01-20',
                 'period' => '1',
             ],
+            [
+                'idarchive' => '6',
+                'name' => 'done6e9408519429f50e0541146e88fd262d.VisitsSummary',
+                'value' => '1',
+                'date1' => '2020-01-20',
+                'date2' => '2020-01-20',
+                'period' => '1',
+            ],
+            [
+                'idarchive' => '7',
+                'name' => 'done69c0d64c636303b5773a21832cf7e301.VisitsSummary',
+                'value' => '1',
+                'date1' => '2020-01-20',
+                'date2' => '2020-01-20',
+                'period' => '1',
+            ],
 
             // start of new archives
             [
-                'idarchive' => '6',
+                'idarchive' => '8',
                 'name' => 'done.VisitsSummary',
                 'value' => '1',
                 'date1' => '2020-01-20',
@@ -284,7 +348,7 @@ class LoaderTest extends IntegrationTestCase
                 'period' => '2',
             ],
             [
-                'idarchive' => '7',
+                'idarchive' => '9',
                 'name' => 'done.VisitsSummary',
                 'value' => '1',
                 'date1' => '2020-01-22',
@@ -292,7 +356,7 @@ class LoaderTest extends IntegrationTestCase
                 'period' => '1',
             ],
             [
-                'idarchive' => '8',
+                'idarchive' => '10',
                 'name' => 'done.ExamplePlugin',
                 'value' => '5',
                 'date1' => '2020-01-20',
@@ -300,7 +364,7 @@ class LoaderTest extends IntegrationTestCase
                 'period' => '2',
             ],
             [
-                'idarchive' => '9',
+                'idarchive' => '11',
                 'name' => 'done.ExamplePlugin',
                 'value' => '5',
                 'date1' => '2020-01-22',
@@ -312,7 +376,7 @@ class LoaderTest extends IntegrationTestCase
 
     private function getExistingArchives($date)
     {
-        $table = ArchiveTableCreator::getNumericTable(Date::factory($date));
+        $table = ArchiveTableCreator::getNumericTable(Date::factory($date), true);
         return Db::fetchAll("SELECT idarchive, `name`, date1, date2, period, `value` FROM `$table` WHERE `name` LIKE 'done%' ORDER BY idarchive ASC");
     }
 
@@ -1846,7 +1910,7 @@ class LoaderTest extends IntegrationTestCase
         $idArchive = $loader->prepareArchive('Actions')[0];
         $this->assertNotEmpty($idArchive);
 
-        $table = ArchiveTableCreator::getNumericTable(Date::factory('2016-02-03'));
+        $table = ArchiveTableCreator::getNumericTable(Date::factory('2016-02-03'), true);
         $doneFlag = Db::fetchOne("SELECT `name` FROM `$table` WHERE `name` LIKE 'done%' AND idarchive IN (" . implode(',', $idArchive) . ")");
         $this->assertEquals('done.Actions', $doneFlag);
     }
@@ -1874,7 +1938,7 @@ class LoaderTest extends IntegrationTestCase
         $loader = new Loader($params);
         $loader->prepareArchive('');
 
-        $this->assertEquals(5, $debugMessageCount);
+        $this->assertEquals(7, $debugMessageCount);
     }
 
     public function testDebugMessageNotLoggedWhenNoProcessingOfSubPeriods(): void
@@ -1924,7 +1988,7 @@ class LoaderTest extends IntegrationTestCase
 
         if ($tsArchived) {
             Db::query(
-                "UPDATE " . ArchiveTableCreator::getNumericTable($params->getPeriod()->getDateStart()) . " SET ts_archived = ?",
+                "UPDATE " . ArchiveTableCreator::getNumericTable($params->getPeriod()->getDateStart(), true) . " SET ts_archived = ?",
                 [Date::factory($tsArchived)->getDatetime()]
             );
         }
@@ -1944,7 +2008,7 @@ class LoaderTest extends IntegrationTestCase
             }
 
             $d = Date::factory($row['date1']);
-            $table = !empty($row['is_blob_data']) ? ArchiveTableCreator::getBlobTable($d) : ArchiveTableCreator::getNumericTable($d);
+            $table = !empty($row['is_blob_data']) ? ArchiveTableCreator::getBlobTable($d, true) : ArchiveTableCreator::getNumericTable($d, true);
             $tsArchived = isset($row['ts_archived']) ? $row['ts_archived'] : Date::now()->getDatetime();
 
             Db::query(
@@ -1957,7 +2021,7 @@ class LoaderTest extends IntegrationTestCase
             $idarchives = array_column($archiveRows, 'idarchive');
             $max = max($idarchives);
 
-            $seq = new Sequence(ArchiveTableCreator::getNumericTable(Date::factory($archiveRows[0]['date1'])));
+            $seq = new Sequence(ArchiveTableCreator::getNumericTable(Date::factory($archiveRows[0]['date1']), true));
             $seq->create($max);
         }
     }

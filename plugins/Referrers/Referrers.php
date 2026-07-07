@@ -19,8 +19,6 @@ use Piwik\Plugins\SitesManager\SiteUrls;
  */
 require_once PIWIK_INCLUDE_PATH . '/plugins/Referrers/functions.php';
 
-/**
- */
 class Referrers extends \Piwik\Plugin
 {
     /**
@@ -132,6 +130,8 @@ class Referrers extends \Piwik\Plugin
         $translationKeys[] = 'Referrers_URLCampaignBuilderResult';
         $translationKeys[] = 'Referrers_GenerateUrl';
         $translationKeys[] = 'Goals_Optional';
+        $translationKeys[] = 'Referrers_URLCampaignBuilderIntro';
+        $translationKeys[] = 'Referrers_URLCampaignBuilder';
     }
 
     public function getJsFiles(&$jsFiles)

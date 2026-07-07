@@ -157,7 +157,7 @@ class ArchiveFilter
     }
 
     /**
-     * @return null
+     * @return string[]|null
      */
     public function getSegmentsToForce()
     {
@@ -192,16 +192,13 @@ class ArchiveFilter
         return $this->disableSegmentsArchiving;
     }
 
-    /**
-     * @param bool $disableSegmentsArchiving
-     */
     public function setDisableSegmentsArchiving(bool $disableSegmentsArchiving)
     {
         $this->disableSegmentsArchiving = $disableSegmentsArchiving;
     }
 
     /**
-     * @return false|string
+     * @return Date[]|false
      */
     public function getRestrictToDateRange()
     {
@@ -241,9 +238,6 @@ class ArchiveFilter
         $this->skipSegmentsForToday = $skipSegmentsForToday;
     }
 
-    /**
-     * @return bool
-     */
     public function isSkipSegmentsForToday(): bool
     {
         return $this->skipSegmentsForToday;

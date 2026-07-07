@@ -13,6 +13,7 @@ use Exception;
 use Piwik\Access\CapabilitiesProvider;
 use Piwik\API\Request;
 use Piwik\Access\RolesProvider;
+use Piwik\Http\BadRequestException;
 use Piwik\Request\AuthenticationToken;
 use Piwik\Container\StaticContainer;
 use Piwik\Plugins\SitesManager\API as SitesManagerApi;
@@ -35,7 +36,7 @@ use Piwik\Session\SessionAuth;
  *                          Super user access is required to set some configuration options.
  *                          All other options are specific to the user or to a website.
  *
- * Access is granted per website. Uses with access for a website can view all
+ * Access is granted per website. Users with access for a website can view all
  * data associated with that website.
  *
  */
@@ -72,11 +73,16 @@ class Access
     protected $hasSuperUserAccess = false;
 
     /**
-     * Authentification object (see Auth)
+     * Authentication object (see Auth)
      *
      * @var Auth
      */
     private $auth = null;
+
+    /**
+     * @var bool
+     */
+    private $sessionExpired = false;
 
     /**
      * Gets the singleton instance. Creates it if necessary.
@@ -98,9 +104,6 @@ class Access
      */
     private $roleProvider;
 
-    /**
-     * Constructor
-     */
     public function __construct(?RolesProvider $roleProvider = null, ?CapabilitiesProvider $capabilityProvider = null)
     {
         if (!isset($roleProvider)) {
@@ -445,7 +448,7 @@ class Access
     }
 
     /**
-     * Returns `true` if the current user has admin access to at least one site.
+     * Returns `true` if the current user has write access to at least one site.
      *
      * @return bool
      */
@@ -565,11 +568,11 @@ class Access
     }
 
     /**
-     * This method checks that the user has VIEW or ADMIN access for the given list of websites.
-     * If the user doesn't have VIEW or ADMIN access for at least one website of the list, we throw an exception.
+     * This method checks that the user has WRITE access for the given list of websites.
+     * If the user doesn't have WRITE access for at least one website of the list, we throw an exception.
      *
      * @param int|array|string $idSites List of ID sites to check (integer, array of integers, string comma separated list of integers)
-     * @throws \Piwik\NoAccessException  If for any of the websites the user doesn't have an VIEW or ADMIN access
+     * @throws \Piwik\NoAccessException  If for any of the websites the user doesn't have a WRITE access
      */
     public function checkUserHasWriteAccess($idSites)
     {
@@ -627,18 +630,18 @@ class Access
     /**
      * @param int|array|string $idSites
      * @return array
-     * @throws \Piwik\NoAccessException
+     * @throws BadRequestException
      */
     protected function getIdSites($idSites)
     {
-        if ($idSites === 'all') {
+        if ($idSites === 'all' || $idSites === ['all']) {
             $idSites = $this->getSitesIdWithAtLeastViewAccess();
         }
 
-        $idSites = Site::getIdSitesFromIdSitesString($idSites);
+        $idSites = Site::getIdSitesFromIdSitesString($idSites, false, true);
 
         if (empty($idSites)) {
-            $this->throwNoAccessException("The parameter 'idSite=' is missing from the request.");
+            throw new BadRequestException("The parameter 'idSite=' is missing from the request.");
         }
 
         return $idSites;
@@ -650,7 +653,7 @@ class Access
      *
      * Use this method with care, as it might open up attack vectors
      *
-     * @param callback $function The callback to execute. Should accept no arguments.
+     * @param callable $function The callback to execute. Should accept no arguments.
      * @return mixed The result of `$function`.
      * @throws Exception rethrows any exceptions thrown by `$function`.
      * @api
@@ -691,7 +694,7 @@ class Access
      * Returns the level of access the current user has to the given site.
      *
      * @param int $idSite The site to check.
-     * @return string The access level, eg, 'view', 'admin', 'noaccess'.
+     * @return string The access level, eg, 'view', 'write', 'admin', 'noaccess'.
      */
     public function getRoleForSite($idSite)
     {
@@ -738,26 +741,29 @@ class Access
      * Throw a NoAccessException with the given message, or a more generic 'You need to log in' message if the
      * user is not currently logged in (e.g. if session has expired).
      *
-     * @param $message
+     * @param string $message
      * @throws NoAccessException
      */
     private function throwNoAccessException($message)
     {
         if (Piwik::isUserIsAnonymous() && !Request::isRootRequestApiRequest()) {
             $message = Piwik::translate('General_YouMustBeLoggedIn');
-
-            // Try to detect whether user was previously logged in so that we can display a different message
-            $referrer = Url::getReferrer();
-            $matomoUrl = SettingsPiwik::getPiwikUrl();
-            if (
-                $referrer && $matomoUrl && Url::isValidHost(Url::getHostFromUrl($referrer)) &&
-                strpos($referrer, $matomoUrl) === 0
-            ) {
+            if ($this->sessionExpired) {
                 $message = Piwik::translate('General_YourSessionHasExpired');
             }
         }
 
         throw new NoAccessException($message);
+    }
+
+    public function setSessionExpired(bool $sessionExpired): void
+    {
+        $this->sessionExpired = $sessionExpired;
+    }
+
+    public function wasSessionExpired(): bool
+    {
+        return $this->sessionExpired;
     }
 
     /**

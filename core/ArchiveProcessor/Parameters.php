@@ -39,7 +39,7 @@ class Parameters
     private $segment = null;
 
     /**
-     * @var string Plugin name which triggered this archive processor
+     * @var string|bool Plugin name which triggered this archive processor, or false if none
      */
     private $requestedPlugin = false;
 
@@ -61,8 +61,6 @@ class Parameters
     private $foundRequestedReports;
 
     /**
-     * Constructor.
-     *
      * @ignore
      */
     public function __construct(Site $site, Period $period, Segment $segment)

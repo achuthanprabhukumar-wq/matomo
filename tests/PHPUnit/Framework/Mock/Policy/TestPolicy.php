@@ -24,19 +24,19 @@ class TestPolicy extends \Piwik\Policy\CompliancePolicy
         return 'test_policy_v1';
     }
 
-    public static function getDescription(): string
+    protected static function generateDescription(): string
     {
         return 'Test policy description';
+    }
+
+    protected static function generateWarnings(): string
+    {
+        return '';
     }
 
     public static function getTitle(): string
     {
         return 'Test Policy';
-    }
-
-    protected static function getMinimumRequiredPlugins(): array
-    {
-        return [];
     }
 
     public static function getSystemValue()
@@ -74,5 +74,15 @@ class TestPolicy extends \Piwik\Policy\CompliancePolicy
         } else {
             self::$perSite = [];
         }
+    }
+
+    public static function getUnknownSettings(): array
+    {
+        return [
+            [
+                'title' => 'Unknown setting title',
+                'note' => 'Unknown setting note',
+            ],
+        ];
     }
 }

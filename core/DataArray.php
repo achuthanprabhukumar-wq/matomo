@@ -78,7 +78,6 @@ class DataArray
      *
      * @param array $newRowToAdd
      * @param array $oldRowToUpdate
-     * @param bool $onlyMetricsAvailableInActionsTable
      *
      * @return void
      */
@@ -135,7 +134,6 @@ class DataArray
      *
      * @param array $newRowToAdd
      * @param array $oldRowToUpdate
-     * @param bool $onlyMetricsAvailableInActionsTable
      *
      * @return void
      */
@@ -209,7 +207,6 @@ class DataArray
     }
 
     /**
-     *
      * @param $newRowToAdd
      * @param $oldRowToUpdate
      */
@@ -305,7 +302,7 @@ class DataArray
      *
      * @param $label
      * @param $row
-     * @throws Exception if the the data row contains non numeric values
+     * @throws Exception if the data row contains non numeric values
      */
     public function sumMetrics($label, $row)
     {

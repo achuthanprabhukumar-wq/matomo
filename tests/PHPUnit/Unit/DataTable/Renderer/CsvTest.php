@@ -20,7 +20,7 @@ class CsvTest extends RendererTestCase
     /**
      * @dataProvider getTestCases
      */
-    public function testRender(callable $tableCallback, string $expected, callable $rendererCallback = null)
+    public function testRender(callable $tableCallback, string $expected, ?callable $rendererCallback = null)
     {
         $renderer = new Csv();
 
@@ -258,6 +258,15 @@ b,d,f,g',
                 ];
             },
             "\"header\nbreak\",header\nvalue,\"value\nbreak\"",
+        ];
+
+        yield 'carriage return and tab in value should be replaced with a space' => [
+            function () {
+                return [
+                    "header\rwith\tcr" => "value\rwith\tcr",
+                ];
+            },
+            "header with cr\nvalue with cr",
         ];
 
         yield 'renders headers and values correctly escaped' => [

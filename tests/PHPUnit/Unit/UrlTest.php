@@ -90,10 +90,34 @@ class UrlTest extends \PHPUnit\Framework\TestCase
     {
         $_SERVER['HTTPS'] = 'on';
         $_SERVER['HTTP_X_FORWARDED_PROTO'] = $proto;
+        Config::getInstance()->General['proxy_scheme_headers'] = ['HTTP_X_FORWARDED_PROTO'];
         $this->assertEquals($proto, Url::getCurrentScheme());
 
         unset($_SERVER['HTTP_X_FORWARDED_PROTO']);
         unset($_SERVER['HTTPS']);
+        Config::getInstance()->General['proxy_scheme_headers'] = null;
+    }
+
+    public function testGetCurrentSchemeIgnoresProxyHeaderWhenNotConfigured()
+    {
+        $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+        Config::getInstance()->General['proxy_scheme_headers'] = null;
+
+        $this->assertEquals('http', Url::getCurrentScheme());
+
+        unset($_SERVER['HTTP_X_FORWARDED_PROTO']);
+    }
+
+    public function testGetCurrentSchemeIgnoresProxyHeaderWhenNotConfigured2()
+    {
+        $_SERVER['HTTPS']                                      = 'on';
+        $_SERVER['HTTP_X_FORWARDED_PROTO']                     = 'http';
+        Config::getInstance()->General['proxy_scheme_headers'] = null;
+
+        $this->assertEquals('https', Url::getCurrentScheme());
+
+        unset($_SERVER['HTTPS']);
+        unset($_SERVER['HTTP_X_FORWARDED_PROTO']);
     }
 
     /**
@@ -102,6 +126,7 @@ class UrlTest extends \PHPUnit\Framework\TestCase
     public function testGetCurrentSchemeShouldDetectSecureFromHttpsHeader()
     {
         $_SERVER['HTTPS'] = 'on';
+        Config::getInstance()->General['proxy_scheme_headers'] = null;
         $this->assertEquals('https', Url::getCurrentScheme());
 
         unset($_SERVER['HTTPS']);
@@ -112,6 +137,7 @@ class UrlTest extends \PHPUnit\Framework\TestCase
      */
     public function testGetCurrentSchemeShouldBeHttpByDefault()
     {
+        Config::getInstance()->General['proxy_scheme_headers'] = null;
         $this->assertEquals('http', Url::getCurrentScheme());
     }
 
@@ -303,7 +329,7 @@ class UrlTest extends \PHPUnit\Framework\TestCase
         ];
 
         foreach ($tests as $test) {
-            list($expected, $uri, $pathInfo) = $test;
+            [$expected, $uri, $pathInfo] = $test;
 
             $_SERVER['REQUEST_URI'] = $uri;
             $_SERVER['PATH_INFO'] = $pathInfo;
@@ -328,6 +354,8 @@ class UrlTest extends \PHPUnit\Framework\TestCase
             [false, '.example.com', ['piwik.example.com'], 'Invalid subdomain'],
             [false, 'example-com', ['example.com'], 'Regex should match . literally'],
             [false, 'www.attacker.com?example.com', ['example.com'], 'Spoofed host'],
+            [false, 'aexample.com', ['example.com', 'example2.com'], 'other host, matching first'],
+            [false, 'aexample2.com', ['example.com', 'example2.com'], 'another host, matching second'],
             [false, 'example.com.attacker.com', ['example.com'], 'Spoofed subdomain'],
             [true, 'example.com.', ['example.com'], 'Trailing . on host is actually valid'],
             [true, 'www-dev.example.com', ['example.com'], 'host with dashes is valid'],
@@ -401,8 +429,8 @@ class UrlTest extends \PHPUnit\Framework\TestCase
 
     public function testGetRFCValidHostname()
     {
-        $_SERVER['HTTP_HOST'] = 'demo.matomo.org';
-        $this->assertEquals('demo.matomo.org', Url::getRFCValidHostname());
+        $_SERVER['HTTP_HOST'] = 'demo.matomo.cloud';
+        $this->assertEquals('demo.matomo.cloud', Url::getRFCValidHostname());
         unset($_SERVER['HTTP_HOST']);
         $this->assertEquals('matomo.org', Url::getRFCValidHostname('matomo.org'));
         $this->assertEquals(false, Url::getRFCValidHostname('matomo org'));
@@ -544,7 +572,10 @@ class UrlTest extends \PHPUnit\Framework\TestCase
         $this->resetGlobalVariables();
         $_GET['module'] = 'CoreHomeAdmin';
         $_GET['action'] = 'trackingCodeGenerator';
-        $this->assertEquals($expected, Url::addCampaignParametersToMatomoLink($url, $campaign, $source, $medium));
+        $this->assertSame($expected, Url::addCampaignParametersToMatomoLink($url, $campaign, $source, $medium));
+
+        $expectedLink = '<a target="_blank" rel="noreferrer noopener" href="' . $expected . '">';
+        $this->assertSame($expectedLink, Url::getExternalLinkTag($url, $campaign, $source, $medium));
     }
 
     public function getCampaignParametersToMatomoLink()
@@ -610,6 +641,8 @@ class UrlTest extends \PHPUnit\Framework\TestCase
              'SomeCampaign', 'SomeSource', 'SomeMedium',
             ],
 
+            // Empty url
+            ['', '', null, null, null],
         ];
     }
 

@@ -14,8 +14,8 @@ use Piwik\Common;
 use Piwik\Config;
 use Piwik\Db;
 use Piwik\Plugins\PrivacyManager\API;
-use Piwik\Plugins\PrivacyManager\FeatureFlags\PrivacyCompliance;
 use Piwik\Plugins\PrivacyManager\tests\Fixtures\MultipleSitesMultipleVisitsFixture;
+use Piwik\Policy\CnilPolicy;
 use Piwik\Tests\Framework\TestCase\SystemTestCase;
 
 /**
@@ -41,12 +41,23 @@ class APITest extends SystemTestCase
         $this->api = API::getInstance();
     }
 
+    public function tearDown(): void
+    {
+        parent::tearDown();
+        $policyConfigSections = [
+            'CnilPolicy',
+        ];
+        foreach ($policyConfigSections as $section) {
+            Config::getInstance()->{$section} = null;
+        }
+    }
+
     public function testExportDataSubjectsFailsWhenNoVisitsGiven()
     {
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('No list of visits given');
 
-        $this->assertNull($this->api->exportDataSubjects(false));
+        $this->assertNull($this->api->exportDataSubjects([]));
     }
 
     public function testExportDataSubjectsWhenOneVisitGiven()
@@ -161,36 +172,8 @@ class APITest extends SystemTestCase
         ]);
     }
 
-    private function setComplianceFeatureFlag(bool $enableFlag): void
-    {
-        $config = Config::getInstance();
-        $featureFlag = new PrivacyCompliance();
-        $featureFlagConfig = $featureFlag->getName() . '_feature';
-
-        if ($enableFlag) {
-            $config->FeatureFlags = [$featureFlagConfig => 'enabled'];
-        } else {
-            $config->FeatureFlags = [$featureFlagConfig => 'disabled'];
-        }
-    }
-
-    public function testGetComplianceStatusReturnsErrorIfFeatureFlagDisabled(): void
-    {
-        $this->setComplianceFeatureFlag(false);
-
-        $this->runApiTests('PrivacyManager.getComplianceStatus', [
-            'testSuffix' => 'featureFlagDisabled',
-            'otherRequestParameters' => [
-                'idSite' => '1',
-                'complianceType' => 'cnil_v1',
-            ],
-        ]);
-    }
-
     public function testGetComplianceStatusReturnsErrorIfComplianceTypeIsNotCnil(): void
     {
-        $this->setComplianceFeatureFlag(true);
-
         $this->runApiTests('PrivacyManager.getComplianceStatus', [
             'testSuffix' => 'complianceTypeNotCnil',
             'otherRequestParameters' => [
@@ -208,8 +191,6 @@ class APITest extends SystemTestCase
         try {
             $access->setSuperUserAccess(false);
 
-            $this->setComplianceFeatureFlag(true);
-
             $this->runApiTests('PrivacyManager.getComplianceStatus', [
                 'testSuffix' => 'notSuperAdmin',
                 'otherRequestParameters' => [
@@ -224,14 +205,73 @@ class APITest extends SystemTestCase
 
     public function testGetComplianceStatusReturnsComplianceStatus(): void
     {
-        $this->setComplianceFeatureFlag(true);
-
         $this->runApiTests('PrivacyManager.getComplianceStatus', [
             'otherRequestParameters' => [
                 'idSite' => '1',
                 'complianceType' => 'cnil_v1',
             ],
         ]);
+    }
+
+    public function getCompliancePolicyConfigValues()
+    {
+        yield ['CnilPolicy', 'cnil_v1', 'cnil_v1_policy_enabled', 0, 'configControlledDisabled'];
+        yield ['CnilPolicy', 'cnil_v1', 'cnil_v1_policy_enabled', 1, 'configControlledEnabled'];
+    }
+
+    public function testGetAnonymisationSettingsDoesNotReturnsExtraMetadataForSystemSettingsWhenFeatureFlagEnabled(): void
+    {
+        // fixture disables all anonymisation, so we expect ipAddressMaskLength = 0 and ipAnonymizerEnabled = 0 in the response
+        $this->runApiTests('PrivacyManager.getAnonymisationSettings', [
+            'testSuffix' => '_compliancePolicyFeatureFlagEnabled',
+        ]);
+    }
+
+    public function testGetAnonymisationSettingsReturnsExtraMetadataForSystemSettingsWhenPolicyEnforced(): void
+    {
+        CnilPolicy::setActiveStatus(null, true);
+
+        $this->runApiTests('PrivacyManager.getAnonymisationSettings', [
+            'testSuffix' => '_compliancePolicyEnforcedSystem',
+        ]);
+
+        CnilPolicy::setActiveStatus(null, false);
+    }
+
+    public function testGetAnonymisationSettingsReturnsExtraMetadataForWebsiteSettingsWhenPolicyEnforced(): void
+    {
+        CnilPolicy::setActiveStatus(1, true);
+
+        $this->runApiTests('PrivacyManager.getAnonymisationSettings', [
+            'testSuffix' => '_compliancePolicyEnforcedWebsite',
+            'otherRequestParameters' => [
+                'idSiteSpecific' => '1',
+            ],
+        ]);
+
+        CnilPolicy::setActiveStatus(1, false);
+    }
+
+    /**
+     * @dataProvider getCompliancePolicyConfigValues
+     */
+    public function testGetComplianceStatusConfigControlled(
+        string $configSection,
+        string $policyIdentifier,
+        string $configKey,
+        int $configValToSet,
+        string $testSuffix
+    ): void {
+        Config::getInstance()->{$configSection}[$configKey] = $configValToSet;
+
+        $this->runApiTests('PrivacyManager.getComplianceStatus', [
+            'testSuffix' => $testSuffix,
+            'otherRequestParameters' => [
+                'idSite' => '1',
+                'complianceType' => $policyIdentifier,
+            ],
+        ]);
+        Config::getInstance()->{$configSection} = null;
     }
 
     public static function getOutputPrefix()

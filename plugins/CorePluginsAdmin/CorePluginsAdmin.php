@@ -46,9 +46,9 @@ class CorePluginsAdmin extends Plugin
     }
 
     /**
-     * Remove any changes from a plugin that has been uninstalled
+     * Remove any changes from a plugin that has been deactivated
      *
-     * @param string $pluginName The name of the plugin that was uninstalled
+     * @param string $pluginName The name of the plugin that was deactivated
      */
     public function removePluginChanges(string $pluginName)
     {
@@ -57,8 +57,6 @@ class CorePluginsAdmin extends Plugin
 
     /**
      * Retrieve an instantiated ChangesModel object
-     *
-     * @return ChangesModel
      */
     private function getChangesModel(): ChangesModel
     {
@@ -170,6 +168,9 @@ class CorePluginsAdmin extends Plugin
         $translations[] = 'General_Cancel';
         $translations[] = 'UsersManager_ConfirmThisChange';
         $translations[] = 'UsersManager_ConfirmWithPassword';
+        $translations[] = 'UsersManager_ConfirmWithReAuthentication';
         $translations[] = 'UsersManager_YourCurrentPassword';
+        $translations[] = 'PrivacyManager_PolicyControlledSetting';
+        $translations[] = 'PrivacyManager_ViewPrivacyComplianceOverview';
     }
 }

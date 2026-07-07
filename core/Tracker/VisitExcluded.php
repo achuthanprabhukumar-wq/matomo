@@ -37,9 +37,6 @@ class VisitExcluded
     public $userAgent;
     public $ip;
 
-    /**
-     * @param Request $request
-     */
     public function __construct(Request $request)
     {
         $this->spamFilter = new ReferrerSpamFilter();
@@ -352,14 +349,11 @@ class VisitExcluded
     }
 
     /**
-     * Returns true if the specified user agent should be excluded for the current site or not.
+     * Returns true if the current visit's user agent should be excluded for the current site.
      *
      * Visits whose user agent string contains one of the excluded_user_agents strings for the
      * site being tracked (or one of the global strings) will be excluded. Regular expressions
      * are also supported.
-     *
-     * @internal param string $this ->userAgent The user agent string.
-     * @return bool
      */
     protected function isUserAgentExcluded(): bool
     {
@@ -372,8 +366,11 @@ class VisitExcluded
                     return true;
                 }
                 // if the string is a valid regex, and the user agent matches, this visit should be excluded
-                if (@preg_match($excludedUserAgent, '') !== false) {
-                    return preg_match($excludedUserAgent, $this->userAgent) ? true : false;
+                if (
+                    @preg_match($excludedUserAgent, '') !== false
+                    && preg_match($excludedUserAgent, $this->userAgent) === 1
+                ) {
+                    return true;
                 }
             }
         }

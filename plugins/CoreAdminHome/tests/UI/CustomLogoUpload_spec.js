@@ -9,7 +9,7 @@ var fs = require('fs'),
     path = require('../../../../tests/lib/screenshot-testing/support/path');
 
 describe("CustomLogoUpload", function () {
-    const contentSelector = '.pageWrap';
+    const contentSelector = 'div[vue-entry="CoreAdminHome.BrandingSettings"]';
 
     const logoToUpload = path.join(PIWIK_INCLUDE_PATH, "/tests/resources/customlogo/logo.png");
     const faviconToUpload = path.join(PIWIK_INCLUDE_PATH, "/tests/resources/customlogo/favicon.png");
@@ -20,8 +20,6 @@ describe("CustomLogoUpload", function () {
     // ba16a2cfb817c43df28fde559b8ee4774f422602 is sha1 of superUserLogin login
     const logoTmpPath = path.join(PIWIK_INCLUDE_PATH, "/tmp/logos/ba16a2cfb817c43df28fde559b8ee4774f422602/logo.png");
     const faviconTmpPath = path.join(PIWIK_INCLUDE_PATH, "/tmp/logos/ba16a2cfb817c43df28fde559b8ee4774f422602/favicon.png");
-
-    this.timeout(0);
 
     before(function () {
         testEnvironment.optionsOverride = {

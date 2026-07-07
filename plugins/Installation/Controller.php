@@ -157,13 +157,11 @@ class Controller extends ControllerAdmin
         if ($form->validate()) {
             try {
                 $dbInfos = $form->createDatabaseObject();
+                $this->createConfigFile($dbInfos);
 
                 DbHelper::checkDatabaseVersion();
 
-
                 Db::get()->checkClientVersion();
-
-                $this->createConfigFile($dbInfos);
 
                 $this->redirectToNextStep(__FUNCTION__);
             } catch (Exception $e) {
@@ -542,7 +540,7 @@ class Controller extends ControllerAdmin
     }
 
     /**
-     * Return the base.less compiled to css
+     * Return the compiled JavaScript for the installation screen.
      *
      * @return string
      */
@@ -594,6 +592,9 @@ class Controller extends ControllerAdmin
         }
         if (count($headers = ProxyHeaders::getProxyHostHeaders()) > 0) {
             $config->General['proxy_host_headers'] = $headers;
+        }
+        if (count($headers = ProxyHeaders::getProxySchemeHeaders()) > 0) {
+            $config->General['proxy_scheme_headers'] = $headers;
         }
 
         if (Common::getRequestVar('clientProtocol', 'http', 'string') == 'https') {
@@ -812,7 +813,7 @@ class Controller extends ControllerAdmin
                 Piwik::translate('Installation_ErrorExpired6') .
                 "\n<br/>" .
                 Piwik::translate('Installation_ErrorExpired7', [
-                    '<a href="' . Url::addCampaignParametersToMatomoLink('https://matomo.org/faq/how-to-install/manage-secure-access-to-the-matomo-installer/') . '" rel="noreferrer noopener" target="_blank">',
+                    Url::getExternalLinkTag('https://matomo.org/faq/how-to-install/manage-secure-access-to-the-matomo-installer/'),
                     '</a>',
                 ])
             );

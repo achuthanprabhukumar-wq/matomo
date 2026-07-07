@@ -25,9 +25,6 @@ use Piwik\SettingsPiwik;
 use Piwik\Url;
 use Piwik\View;
 
-/**
- *
- */
 class Controller extends \Piwik\Plugin\ControllerAdmin
 {
     /** @var SiteContentDetector */
@@ -51,8 +48,13 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
         $pluginManager = Manager::getInstance();
         $rollUpEnabled = $pluginManager->isPluginLoaded('RollUpReporting')
             && $pluginManager->isPluginActivated('RollUpReporting');
+        $privacyManagerEnabled = $pluginManager->isPluginLoaded('PrivacyManager')
+            && $pluginManager->isPluginActivated('PrivacyManager');
 
-        return $this->renderTemplate('index', ['rollUpEnabled' => $rollUpEnabled]);
+        return $this->renderTemplate('index', [
+            'rollUpEnabled' => $rollUpEnabled,
+            'privacyManagerEnabled' => $privacyManagerEnabled,
+        ]);
     }
 
     public function globalSettings()
@@ -134,6 +136,13 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
         $session->ignoreMessage = true;
         $session->setExpirationSeconds($oneHour = 60 * 60);
 
+        // The reporting UI dismisses via Ajax and stays in place; only non-Ajax (bookmarked) requests
+        // still need redirecting back to the dashboard.
+        if (Common::isXmlHttpRequest()) {
+            Json::sendHeaderJSON();
+            return json_encode(['result' => 'success']);
+        }
+
         $url = Url::getCurrentUrlWithoutQueryString() . Url::getCurrentQueryStringWithParametersModified(array('module' => 'CoreHome', 'action' => 'index'));
         Url::redirectToUrl($url);
     }
@@ -146,6 +155,18 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
             'inviteUserLink' => $this->getInviteUserLink(),
             'hideWhatIsNew'  => true,
         ], $viewType = 'basic');
+    }
+
+    /**
+     * Ajax endpoint for the reporting UI gate: returns a JSON boolean (true = show the tracker-setup
+     * screen). Requires view access. See SitesManager::shouldShowEmptySiteMessage().
+     */
+    public function getSiteEmptyState()
+    {
+        $this->checkSitePermission();
+
+        Json::sendHeaderJSON();
+        return json_encode(SitesManager::shouldShowEmptySiteMessage((int) $this->idSite));
     }
 
     public function getTrackingMethodsForSite()
@@ -287,8 +308,17 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
         echo json_encode([
             'trackingMethods' => $trackingMethods,
             'recommendedMethod' => $recommendedMethod,
+            // The standalone page gets this as a template variable; the SPA gate has to fetch it.
+            'ctaContent' => $this->renderSiteWithoutDataCta(),
         ]);
         exit;
+    }
+
+    private function renderSiteWithoutDataCta(): string
+    {
+        $view = new View('@SitesManager/_siteWithoutDataCta');
+        $view->inviteUserLink = $this->getInviteUserLink();
+        return $view->render();
     }
 
     private function getGoogleAnalyticsImporterInstruction()
@@ -302,7 +332,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
                 'type'              => SiteContentDetectionAbstract::TYPE_OTHER,
                 'othersInstruction' => Piwik::translate(
                     'CoreAdminHome_ImportFromGoogleAnalyticsDescription',
-                    ['<a href="' . Url::addCampaignParametersToMatomoLink('https://plugins.matomo.org/GoogleAnalyticsImporter') . '" rel="noopener noreferrer" target="_blank">', '</a>']
+                    [Url::getExternalLinkTag('https://plugins.matomo.org/GoogleAnalyticsImporter'), '</a>']
                 ),
             ];
         }
@@ -336,7 +366,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
                 'type'              => SiteContentDetectionAbstract::TYPE_OTHER,
                 'othersInstruction' => Piwik::translate(
                     'SitesManager_ImageTrackingDescription',
-                    ['<a href="' . Url::addCampaignParametersToMatomoLink('https://matomo.org/docs/tracking-api/reference/') . '" rel="noreferrer noopener" target="_blank">', '</a>']
+                    [Url::getExternalLinkTag('https://matomo.org/docs/tracking-api/reference/'), '</a>']
                 ),
             ],
             [
@@ -345,7 +375,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
                 'type'              => SiteContentDetectionAbstract::TYPE_OTHER,
                 'othersInstruction' => Piwik::translate(
                     'SitesManager_LogAnalyticsDescription',
-                    ['<a href="' . Url::addCampaignParametersToMatomoLink('https://matomo.org/log-analytics/') . '" rel="noreferrer noopener" target="_blank">', '</a>']
+                    [Url::getExternalLinkTag('https://matomo.org/log-analytics/'), '</a>']
                 ),
             ],
             [
@@ -354,7 +384,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
                 'type'              => SiteContentDetectionAbstract::TYPE_OTHER,
                 'othersInstruction' => Piwik::translate(
                     'SitesManager_MobileAppsAndSDKsDescription',
-                    ['<a href="' . Url::addCampaignParametersToMatomoLink('https://matomo.org/integrate/#programming-language-platforms-and-frameworks') . '" rel="noreferrer noopener" target="_blank">', '</a>']
+                    [Url::getExternalLinkTag('https://matomo.org/integrate/#programming-language-platforms-and-frameworks'), '</a>']
                 ),
             ],
             [
@@ -363,7 +393,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
                 'type'              => SiteContentDetectionAbstract::TYPE_OTHER,
                 'othersInstruction' => Piwik::translate(
                     'CoreAdminHome_HttpTrackingApiDescription',
-                    ['<a href="' . Url::addCampaignParametersToMatomoLink('https://developer.matomo.org/api-reference/tracking-api') . '" rel="noreferrer noopener" target="_blank">', '</a>']
+                    [Url::getExternalLinkTag('https://developer.matomo.org/api-reference/tracking-api'), '</a>']
                 ),
             ]
         );
@@ -410,7 +440,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
             'SitesManager_SiteWithoutDataDetectedSite',
             [
                 $detectedCms::getName(),
-                '<a target="_blank" rel="noreferrer noopener" href="' . $detectedCms::getInstructionUrl() . '">',
+                Url::getExternalLinkTag($detectedCms::getInstructionUrl()),
                 '</a>',
             ]
         );

@@ -14,10 +14,8 @@ use Piwik\API\Request;
 use Piwik\Common;
 use Piwik\Container\StaticContainer;
 use Piwik\Site;
+use Piwik\Plugins\Live\Settings\VisitorLogDisabled as VisitorLogDisabledSetting;
 
-/**
- *
- */
 class Live extends \Piwik\Plugin
 {
     /**
@@ -57,14 +55,12 @@ class Live extends \Piwik\Plugin
     /**
      * Throws an exception if visits log is disabled
      *
-     * @param null|int|array $idSite
+     * @param int|string|int[]|null $idSite
      * @throws \Exception
      */
     public static function checkIsVisitorLogEnabled($idSite = null): void
     {
-        $systemSettings = new SystemSettings();
-
-        if ($systemSettings->disableVisitorLog->getValue() === true) {
+        if (VisitorLogDisabledSetting::getInstance()->getValue() === true) {
             throw new \Exception('Visits log is deactivated globally. A user with super user access can enable this feature in the general settings.');
         }
 
@@ -76,8 +72,7 @@ class Live extends \Piwik\Plugin
             $idSites = Site::getIdSitesFromIdSitesString($idSite);
 
             foreach ($idSites as $idSite) {
-                $settings = new MeasurableSettings($idSite);
-                if ($settings->disableVisitorLog->getValue() === true) {
+                if (VisitorLogDisabledSetting::getInstance($idSite)->getValue() === true) {
                     throw new \Exception('Visits log is deactivated in website settings. A user with at least admin access can enable this feature in the settings for this website (idSite=' . $idSite . ').');
                 }
             }
@@ -87,8 +82,7 @@ class Live extends \Piwik\Plugin
     /**
      * Returns whether visits log is enabled (for the given site)
      *
-     * @param null|int|array $idSite
-     * @return bool
+     * @param int|string|int[]|null $idSite
      */
     public static function isVisitorLogEnabled($idSite = null): bool
     {
@@ -103,7 +97,7 @@ class Live extends \Piwik\Plugin
     /**
      * Throws an exception if visitor profile is disabled
      *
-     * @param null|int|array $idSite
+     * @param int|string|int[]|null $idSite
      * @throws \Exception
      */
     public static function checkIsVisitorProfileEnabled($idSite = null): void
@@ -136,8 +130,7 @@ class Live extends \Piwik\Plugin
     /**
      * Returns whether visitor profile is enabled (for the given site)
      *
-     * @param null|int|array $idSite
-     * @return bool
+     * @param int|string|int[]|null $idSite
      */
     public static function isVisitorProfileEnabled($idSite = null): bool
     {
@@ -192,6 +185,17 @@ class Live extends \Piwik\Plugin
         $translationKeys[] = 'Live_VisitorLog';
         $translationKeys[] = 'General_ColumnNbVisitsDocumentation';
         $translationKeys[] = 'General_ColumnNbActionsDocumentation';
+        $translationKeys[] = 'Live_RealTimeVisitorCount';
+        $translationKeys[] = 'Live_NbVisitor';
+        $translationKeys[] = 'Live_NbVisitors';
+        $translationKeys[] = 'General_OneVisit';
+        $translationKeys[] = 'General_NVisits';
+        $translationKeys[] = 'General_OneAction';
+        $translationKeys[] = 'VisitsSummary_NbActionsDescription';
+        $translationKeys[] = 'Intl_OneMinute';
+        $translationKeys[] = 'Intl_NMinutes';
+        $translationKeys[] = 'Live_SimpleRealTimeWidget_Message';
+        $translationKeys[] = 'Live_QueryMaxExecutionTimeExceeded';
     }
 
     public function renderAction(&$renderedAction, $action, $previousAction, $visitorDetails)

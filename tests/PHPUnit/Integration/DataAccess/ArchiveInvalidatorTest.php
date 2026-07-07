@@ -19,6 +19,10 @@ use Piwik\DataAccess\Model;
 use Piwik\Date;
 use Piwik\Db;
 use Piwik\Option;
+use Piwik\Period\Day;
+use Piwik\Period\Month;
+use Piwik\Period\Week;
+use Piwik\Period\Year;
 use Piwik\Piwik;
 use Piwik\Plugins\PrivacyManager\PrivacyManager;
 use Piwik\Plugins\SegmentEditor\API;
@@ -80,6 +84,26 @@ class ArchiveInvalidatorTest extends IntegrationTestCase
         parent::setUp();
 
         $this->invalidator = new ArchiveInvalidator(new Model(), new NullLogger());
+    }
+
+    public function testMarkArchivesAsInvalidatedQueuesInvalidationWithoutCreatingMissingMonthTable()
+    {
+        $date = '2024-04-03';
+
+        $this->assertNull(ArchiveTableCreator::getNumericTable(Date::factory($date), false));
+        $countBefore = (int) $this->getNumInvalidations();
+
+        $this->invalidator->markArchivesAsInvalidated([1], [$date], 'day');
+
+        $this->assertNull(ArchiveTableCreator::getNumericTable(Date::factory($date), false));
+        $this->assertSame($countBefore + 4, (int) $this->getNumInvalidations());
+
+        $invalidations = array_values(array_filter($this->getInvalidatedArchiveTableEntries(), function ($entry) use ($date) {
+            return $entry['idsite'] == 1 && $entry['date1'] === $date;
+        }));
+
+        $this->assertCount(1, $invalidations);
+        $this->assertSame('done', $invalidations[0]['name']);
     }
 
     public function testMarkArchivesAsInvalidatedSkipsParentArchivesIfTheyAreDisabled()
@@ -2020,6 +2044,57 @@ class ArchiveInvalidatorTest extends IntegrationTestCase
         $this->assertEquals($expectedInvalidationNames, $invalidationNames);
     }
 
+    public function testReArchiveReportCreatesCorrectInvalidationEntriesIfReArchivingSegmentsForMultipleSites()
+    {
+        Date::$now = strtotime('2020-06-16 12:00:00');
+
+        Rules::setBrowserTriggerArchiving(false);
+        API::getInstance()->add('autoArchiveSegment', 'browserCode==IE', 1, true);
+        API::getInstance()->add('secondArchiveSegment', 'browserCode==FF', false, true);
+        Rules::setBrowserTriggerArchiving(true);
+
+        $reArchiveList = new ReArchiveList();
+        $reArchiveList->setAll([]); // clear list since adding segments will add to it
+
+        $this->invalidator->reArchiveReport([1, 2], 'Referrers', null, Date::factory('2020-06-15'));
+        $this->invalidator->applyScheduledReArchiving();
+
+        $invalidations = Db::fetchAll("SELECT `name`, `idsite`, `date1`, `period` FROM " . Common::prefixTable('archive_invalidations') . " ORDER BY  `idsite`, `name`, `period`, `date1`");
+
+        $expectedInvalidations = [
+            // idsite 1
+            ['name' => 'done.Referrers', 'idsite' => 1, 'date1' => '2020-06-15', 'period' => Day::PERIOD_ID],
+            ['name' => 'done.Referrers', 'idsite' => 1, 'date1' => '2020-06-15', 'period' => Week::PERIOD_ID],
+            ['name' => 'done.Referrers', 'idsite' => 1, 'date1' => '2020-06-01', 'period' => Month::PERIOD_ID],
+            ['name' => 'done.Referrers', 'idsite' => 1, 'date1' => '2020-01-01', 'period' => Year::PERIOD_ID],
+
+            ['name' => 'done3736b708e4d20cfc10610e816a1b2341.Referrers', 'idsite' => 1, 'date1' => '2020-06-15', 'period' => Day::PERIOD_ID],
+            ['name' => 'done3736b708e4d20cfc10610e816a1b2341.Referrers', 'idsite' => 1, 'date1' => '2020-06-15', 'period' => Week::PERIOD_ID],
+            ['name' => 'done3736b708e4d20cfc10610e816a1b2341.Referrers', 'idsite' => 1, 'date1' => '2020-06-01', 'period' => Month::PERIOD_ID],
+            ['name' => 'done3736b708e4d20cfc10610e816a1b2341.Referrers', 'idsite' => 1, 'date1' => '2020-01-01', 'period' => Year::PERIOD_ID],
+
+            ['name' => 'done5f4f9bafeda3443c3c2d4b2ef4dffadc.Referrers', 'idsite' => 1, 'date1' => '2020-06-15', 'period' => Day::PERIOD_ID],
+            ['name' => 'done5f4f9bafeda3443c3c2d4b2ef4dffadc.Referrers', 'idsite' => 1, 'date1' => '2020-06-15', 'period' => Week::PERIOD_ID],
+            ['name' => 'done5f4f9bafeda3443c3c2d4b2ef4dffadc.Referrers', 'idsite' => 1, 'date1' => '2020-06-01', 'period' => Month::PERIOD_ID],
+            ['name' => 'done5f4f9bafeda3443c3c2d4b2ef4dffadc.Referrers', 'idsite' => 1, 'date1' => '2020-01-01', 'period' => Year::PERIOD_ID],
+
+            // idsite 2
+            ['name' => 'done.Referrers', 'idsite' => 2, 'date1' => '2020-06-15', 'period' => Day::PERIOD_ID],
+            ['name' => 'done.Referrers', 'idsite' => 2, 'date1' => '2020-06-15', 'period' => Week::PERIOD_ID],
+            ['name' => 'done.Referrers', 'idsite' => 2, 'date1' => '2020-06-01', 'period' => Month::PERIOD_ID],
+            ['name' => 'done.Referrers', 'idsite' => 2, 'date1' => '2020-01-01', 'period' => Year::PERIOD_ID],
+
+            ['name' => 'done3736b708e4d20cfc10610e816a1b2341.Referrers', 'idsite' => 2, 'date1' => '2020-06-15', 'period' => Day::PERIOD_ID],
+            ['name' => 'done3736b708e4d20cfc10610e816a1b2341.Referrers', 'idsite' => 2, 'date1' => '2020-06-15', 'period' => Week::PERIOD_ID],
+            ['name' => 'done3736b708e4d20cfc10610e816a1b2341.Referrers', 'idsite' => 2, 'date1' => '2020-06-01', 'period' => Month::PERIOD_ID],
+            ['name' => 'done3736b708e4d20cfc10610e816a1b2341.Referrers', 'idsite' => 2, 'date1' => '2020-01-01', 'period' => Year::PERIOD_ID],
+
+            // segment `browserCode==IE` not available for idsite=2
+        ];
+
+        $this->assertEquals($expectedInvalidations, $invalidations);
+    }
+
     public function testReArchiveReportCreatesCorrectInvalidationEntriesIfNotReArchivingSegments()
     {
         Date::$now = strtotime('2020-06-16 12:00:00');
@@ -2422,7 +2497,7 @@ class ArchiveInvalidatorTest extends IntegrationTestCase
         $dateStart = $periodObject->getDateStart();
         $dateEnd = $periodObject->getDateEnd();
 
-        $table = ArchiveTableCreator::getNumericTable($dateStart);
+        $table = ArchiveTableCreator::getNumericTable($dateStart, true);
 
         $model = new Model();
         $idArchive = $model->allocateNewArchiveId($table);

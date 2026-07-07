@@ -44,9 +44,6 @@ class GetUsers extends Base
         return array();
     }
 
-    /**
-     * @param ViewDataTable $view
-     */
     public function configureView(ViewDataTable $view)
     {
         $view->config->addTranslation('label', Piwik::translate('General_UserId'));
@@ -64,8 +61,8 @@ class GetUsers extends Base
         $view->config->no_data_message = Piwik::translate('CoreHome_ThereIsNoDataForThisReport') . '<br><br>'
           . sprintf(
               Piwik::translate('UserId_ThereIsNoDataForThisReportHelp'),
-              "<a target='_blank' rel='noreferrer noopener' href='" . Url::addCampaignParametersToMatomoLink('https://matomo.org/docs/user-id/') . "'>",
-              "</a>"
+              Url::getExternalLinkTag('https://matomo.org/docs/user-id/'),
+              '</a>'
           );
 
         if ($view->isViewDataTableId(HtmlTable::ID)) {

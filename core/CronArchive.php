@@ -255,11 +255,6 @@ class CronArchive
     private const STEP_SCHEDULED_TASKS = 3;
     private const STEP_FINISH = 4;
 
-    /**
-     * Constructor.
-     *
-     * @param LoggerInterface|null $logger
-     */
     public function __construct(?LoggerInterface $logger = null)
     {
         $this->logger = $logger ?: StaticContainer::get(LoggerInterface::class);
@@ -616,6 +611,7 @@ class CronArchive
             }
 
             $visitsForPeriod = $this->getVisitsFromApiResponse($stats);
+            $peakMemory = $this->getPeakMemoryFromApiResponse($stats);
 
             $this->logArchiveJobFinished(
                 $url,
@@ -623,7 +619,8 @@ class CronArchive
                 $visitsForPeriod,
                 $archivesBeingQueried[$index]['plugin'],
                 $archivesBeingQueried[$index]['report'],
-                !$checkInvalid
+                !$checkInvalid,
+                $peakMemory
             );
 
             $this->deleteInvalidatedArchives($archivesBeingQueried[$index]);
@@ -684,16 +681,17 @@ class CronArchive
         return [$url, $segment, $plugin];
     }
 
-    private function logArchiveJobFinished($url, $timer, $visits, $plugin = null, $report = null, $wasSkipped = null)
+    private function logArchiveJobFinished($url, $timer, $visits, $plugin = null, $report = null, $wasSkipped = null, $peakMemory = null)
     {
         $params = UrlHelper::getArrayFromQueryString($url);
         $visits = (int) $visits;
 
         $message = $wasSkipped ? "Skipped Archiving website" : "Archived website";
+        $peakMemoryPart = $peakMemory ? ", Peak memory: $peakMemory" : "";
 
         $this->logger->info($message . " id {$params['idSite']}, period = {$params['period']}, date = "
             . "{$params['date']}, segment = '" . (isset($params['segment']) ? urldecode(urldecode($params['segment'])) : '') . "', "
-            . ($plugin ? "plugin = $plugin, " : "") . ($report ? "report = $report, " : "") . "$visits visits found. $timer");
+            . ($plugin ? "plugin = $plugin, " : "") . ($report ? "report = $report, " : "") . "$visits visits found. $timer$peakMemoryPart");
     }
 
     public function getErrors()
@@ -795,7 +793,8 @@ class CronArchive
      * @param string $idSite
      * @param string $period
      * @param string $date
-     * @param bool|false $segment
+     * @param string|false $segment
+     * @param string|null $plugin
      * @return string
      */
     private function getVisitsRequestUrl($idSite, $period, $date, $segment = false, $plugin = null)
@@ -876,7 +875,6 @@ class CronArchive
 
     /**
      * Initializes the various parameters to the script, based on input parameters.
-     *
      */
     private function initStateFromParameters()
     {
@@ -907,7 +905,7 @@ class CronArchive
 
     /**
      * @internal
-     * @param $api
+     * @param CoreAdminHomeAPI $api
      */
     public function setApiToInvalidateArchivedReport($api)
     {
@@ -1167,7 +1165,8 @@ class CronArchive
      *
      * Note: this method should only be used in the context of invalidation.
      *
-     * @params Parameters $params The parameters for the archive we want to invalidate.
+     * @param Parameters $params The parameters for the archive we want to invalidate.
+     * @param bool $doNotIncludeTtlInExistingArchiveCheck
      */
     private function canWeSkipInvalidatingBecauseThereIsAUsablePeriod(Parameters $params, $doNotIncludeTtlInExistingArchiveCheck = false): bool
     {
@@ -1393,6 +1392,15 @@ class CronArchive
         return (int) $stats['nb_visits'];
     }
 
+    private function getPeakMemoryFromApiResponse($stats): ?string
+    {
+        if (empty($stats['peak_memory_usage_pretty'])) {
+            return null;
+        }
+
+        return (string) $stats['peak_memory_usage_pretty'];
+    }
+
     /**
      * @return int
      */
@@ -1406,7 +1414,7 @@ class CronArchive
     }
 
     /**
-     * @return false|string
+     * @return string|int|false
      */
     private function getLastSuccessRunTimestamp()
     {
@@ -1421,7 +1429,7 @@ class CronArchive
     }
 
     /**
-     * @param $idSite
+     * @param int|string $idSite
      * @return array of date strings
      */
     private function getCustomDateRangeToPreProcess($idSite)
@@ -1492,7 +1500,7 @@ class CronArchive
     }
 
     /**
-     * @param $url
+     * @param string $url
      * @return string
      */
     private function makeRequestUrl($url)
@@ -1611,9 +1619,6 @@ class CronArchive
         return false;
     }
 
-    /**
-     * @param ArchiveFilter $archiveFilter
-     */
     public function setArchiveFilter(ArchiveFilter $archiveFilter): void
     {
         $this->archiveFilter = $archiveFilter;

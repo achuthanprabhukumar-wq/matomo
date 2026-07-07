@@ -13,6 +13,8 @@ use Piwik\Container\StaticContainer;
 use Piwik\Date;
 use Piwik\Plugin\Manager;
 use Piwik\Plugins\SitesManager\API;
+use Piwik\Policy\CnilPolicy;
+use Piwik\Policy\PolicyManager;
 use Piwik\Tests\Framework\Fixture;
 use Piwik\Tests\Framework\Mock\FakeAccess;
 use Piwik\Tests\Framework\Mock\Tracker\RequestAuthenticated;
@@ -20,6 +22,7 @@ use Piwik\Tracker\Request;
 use Piwik\Tracker\Visit;
 use Piwik\Tracker\VisitExcluded;
 use Piwik\Tests\Framework\TestCase\IntegrationTestCase;
+use Piwik\Tracker\Visit\VisitProperties;
 
 /**
  * @group Core
@@ -260,6 +263,10 @@ class VisitTest extends IntegrationTestCase
                 'Googlebot-Image/1.0' => false,
                 'Yahoo! Slurp China' => false,
             )),
+            array('/doesnotmatch/,/TargetBot/i', array( // multiple regex entries
+                'Mozilla/5.0 (compatible; TargetBot/1.0; +http://example.org/bot)' => true,
+                'Mozilla/5.0 (compatible; OtherBot/1.0; +http://example.org/bot)' => false,
+            )),
             array('/Mozilla/5.0/i)', array( // invalid regex
                 'Mozilla/5.0 (compatible; Yahoo! Slurp/3.0; http://help.yahoo.com/help/us/ysearch/slurp)' => false,
                 'Wget/1.13.4 (linux-gnu)' => false,
@@ -498,6 +505,51 @@ class VisitTest extends IntegrationTestCase
         $this->assertSameReportsInvalidated($expectedRemeberedArchivedReports, $remembered);
     }
 
+    /**
+     * @dataProvider getMajorVersionPolicyControlledData
+     */
+    public function testVisitMajorVersionPolicyControlled($policy, $policyEnabled, $propertyKey, $expectedVersionValue)
+    {
+        $idsite = API::getInstance()->addSite('name', 'http://piwik.net/');
+
+        PolicyManager::setPolicyActiveStatus($policy, $policyEnabled, $idsite);
+
+        $visitProperties = $this->createVisitGetProperties($idsite);
+
+        PolicyManager::setPolicyActiveStatus($policy, false, $idsite);
+
+        $this->assertSame($expectedVersionValue, $visitProperties->getProperty($propertyKey));
+    }
+
+    private function createVisitGetProperties($idsite): VisitProperties
+    {
+        $default = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $_SERVER['HTTP_USER_AGENT'] = "Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_7; en-us) AppleWebKit/533.21.1 (KHTML, like Gecko) Version/5.0.5 Safari/533.21.1";
+
+        $midnight = Date::factoryInTimezone('today', 'UTC+5')->setTimezone('UTC+5');
+
+        /** @var VisitPublic */
+        [$visit] = $this->prepareVisitWithRequest(array(
+            'idsite' => $idsite,
+            'rec' => 1,
+            'cip' => '156.146.156.146',
+            'token_auth' => Fixture::getTokenAuth(),
+        ), $midnight, $isPublic = true);
+
+        $_SERVER['HTTP_USER_AGENT'] = $default;
+        /** @var VisitProperties */
+        $visitProperties = $visit->publicVisitProperties();
+        return $visitProperties;
+    }
+
+    public function getMajorVersionPolicyControlledData()
+    {
+        yield [CnilPolicy::class, false, 'config_browser_version', '5.0'];
+        yield [CnilPolicy::class, true, 'config_browser_version', '5'];
+        yield [CnilPolicy::class, false, 'config_os_version', '10.6'];
+        yield [CnilPolicy::class, true, 'config_os_version', '10'];
+    }
+
     private function assertSameReportsInvalidated($expected, $actual)
     {
         $keys1 = array_keys($expected);
@@ -513,12 +565,16 @@ class VisitTest extends IntegrationTestCase
         }
     }
 
-    private function prepareVisitWithRequest($requestParams, $requestDate)
+    private function prepareVisitWithRequest($requestParams, $requestDate, $isPublic = false)
     {
         $request = new Request($requestParams);
         $request->setCurrentTimestamp(Date::factory($requestDate)->getTimestamp());
 
-        $visit = new Visit();
+        if ($isPublic) {
+            $visit = new VisitPublic();
+        } else {
+            $visit = new Visit();
+        }
         $visit->setRequest($request);
 
         $visit->handle();
@@ -552,5 +608,13 @@ class VisitExcludedPublic extends VisitExcluded
     public function publicIsNonHumanBot()
     {
         return $this->isNonHumanBot();
+    }
+}
+
+class VisitPublic extends Visit
+{
+    public function publicVisitProperties()
+    {
+        return $this->visitProperties;
     }
 }

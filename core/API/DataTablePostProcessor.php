@@ -24,6 +24,7 @@ use Piwik\Plugin\Report;
 use Piwik\Plugin\ReportsProvider;
 use Piwik\Plugins\API\Filter\DataComparisonFilter;
 use Piwik\Plugins\CoreHome\Columns\Metrics\EvolutionMetric;
+use Piwik\Plugins\PrivacyManager\DataRounding;
 use Piwik\Request;
 
 /**
@@ -68,9 +69,6 @@ class DataTablePostProcessor
     private $callbackBeforeGenericFilters;
     private $callbackAfterGenericFilters;
 
-    /**
-     * Constructor.
-     */
     public function __construct($apiModule, $apiMethod, $request)
     {
         $this->apiModule = $apiModule;
@@ -106,7 +104,7 @@ class DataTablePostProcessor
      * Apply post-processing logic to a DataTable of a report for an API request.
      *
      * @param DataTableInterface $dataTable The data table to process.
-     * @return DataTableInterface A new data table.
+     * @return DataTableInterface The processed data table.
      */
     public function process(DataTableInterface $dataTable)
     {
@@ -137,6 +135,9 @@ class DataTablePostProcessor
         $dataTable = $this->applyQueuedFilters($dataTable);
         $dataTable = $this->applyRequestedColumnDeletion($dataTable);
         $dataTable = $this->applyLabelFilter($dataTable);
+
+        DataRounding::roundCountMetricsForRequest($dataTable, $this->request, $this->report);
+
         $dataTable = $this->applyMetricsFormatting($dataTable);
         return $dataTable;
     }
@@ -149,10 +150,6 @@ class DataTablePostProcessor
         return $dataTable;
     }
 
-    /**
-     * @param DataTableInterface $dataTable
-     * @return DataTableInterface
-     */
     public function applyArchiveStateFilter(DataTableInterface $dataTable): DataTableInterface
     {
         $fetchArchiveState = (new \Piwik\Request($this->request))->getBoolParameter('fetch_archive_state', false);
@@ -167,7 +164,6 @@ class DataTablePostProcessor
     }
 
     /**
-     * @param DataTableInterface $dataTable
      * @return DataTableInterface
      */
     public function applyPivotByFilter(DataTableInterface $dataTable)
@@ -374,9 +370,6 @@ class DataTablePostProcessor
         return $dataTable;
     }
 
-    /**
-     * @param DataTableInterface $dataTable
-     */
     public function removeTemporaryMetrics(DataTableInterface $dataTable)
     {
         $report = $this->report;

@@ -14,6 +14,7 @@
         "AllWebsites": "All websites",
         "LastUsed": "Last used",
         "ExpireDate": "Expire date",
+        "ExpiryInDays": "Expiry in days",
         "TokenExpireDate": "Token expire date",
         "AuthTokens": "Auth tokens",
         "AuthTokenPurpose": "What are you using this token for?",
@@ -76,6 +77,7 @@
         "YourCurrentPassword": "Your current password",
         "CurrentPasswordNotCorrect": "The current password you entered is not correct.",
         "ConfirmWithPassword": "Please enter your password to confirm this change.",
+        "ConfirmWithReAuthentication": "Please re-authenticate to confirm this change.",
         "ConfirmThisChange": "Please confirm this change.",
         "InjectedHostCannotChangePwd": "You are currently visiting with an unknown host (%1$s). You cannot change your password until this problem is fixed.",
         "LastSeen": "Last seen",
@@ -181,6 +183,12 @@
         "Username": "Username",
         "RoleFor": "Role for",
         "TheDisplayedUsersAreSelected": "The %1$s displayed users are selected.",
+        "ThemeModeDark": "Dark",
+        "ThemeModeHelp1": "Choose Light, Dark, or Match browser theme to suit your workspace.",
+        "ThemeModeHelp2": "%1$s automatically follows your browser theme.",
+        "ThemeModeHelp3": "Note: If a Custom theme is currently enabled, this setting will not take effect.",
+        "ThemeModeLightDefault": "Light (default)",
+        "ThemeModeMatchBrowser": "Match browser",
         "AllUsersAreSelected": "All %1$s users are selected.",
         "ClickToSelectDisplayedUsers": "Click to select the %1$s displayed users.",
         "RemoveAllAccessToThisSite": "Remove all access to this website",
@@ -213,7 +221,7 @@
         "PasswordChangeTerminatesOtherSessions": "When you change your password, any other active session of this account will be logged out.",
         "PasswordChangeDoesNotRevokeAuthTokens": "Changing your password won't revoke app-specific tokens. If you suspect unauthorized access, delete and regenerate them in the %1$s section at the bottom of the page.",
         "NewsletterSignupTitle": "Newsletter Signup",
-        "NewsletterSignupMessage": "Subscribe to our newsletter to receive regular information about Matomo. You can unsubscribe from it any time. This service uses MadMimi. Learn more about it on %1$sMatomo's Privacy Policy page%2$s.",
+        "NewsletterSignupMessage": "Subscribe to our newsletter to receive regular information about Matomo. You can unsubscribe from it any time. Learn more about it on %1$sMatomo's Privacy Policy page%2$s.",
         "NewsletterSignupFailureMessage": "Whoops, something went wrong. We weren't able to sign you up for the newsletter.",
         "NewsletterSignupSuccessMessage": "Super, you're all signed up! We'll be in touch soon.",
         "FirstWebsitePermission": "First website permission",
@@ -280,6 +288,9 @@
         "CannotRevokeOwnSuperuserAccess": "You cannot revoke your own superuser access.",
         "TokenDescription": "Token description",
         "TokenExpirationDate": "Token expiration date",
-        "TokenCreationDate": "Token creation date"
+        "TokenCreationDate": "Token creation date",
+        "SignOutUser": "Sign out of all sessions",
+        "SignOutUserConfirm": "Are you sure you want to sign %1$s out of all active sessions?",
+        "SignOutUserSuccess": "%1$s has been signed out of all active sessions."
     }
 }

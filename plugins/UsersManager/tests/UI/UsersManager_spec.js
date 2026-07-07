@@ -8,10 +8,29 @@
  */
 
 describe("UsersManager", function () {
-    this.timeout(0);
     this.fixture = "Piwik\\Plugins\\UsersManager\\tests\\Fixtures\\ManyUsers";
 
     var url = "?module=UsersManager&action=index";
+
+    async function getVisibleSiteRoles() {
+        await page.waitForFunction(() => !$('.userPermissionsEdit').hasClass('loading'));
+        await page.waitForSelector('#sitesForPermission tbody tr:not(.select-all-row)', { visible: true });
+
+        return page.evaluate(() => {
+            const roles = {};
+
+            $('#sitesForPermission tbody tr').not('.select-all-row').each(function () {
+                const siteName = $(this).find('td:eq(1) span').text().trim();
+                const role = $(this).find('.role-select select').val();
+
+                if (siteName) {
+                    roles[siteName] = role;
+                }
+            });
+
+            return roles;
+        });
+    }
 
     before(async function() {
         await page.webpage.setViewport({
@@ -36,8 +55,31 @@ describe("UsersManager", function () {
         expect(await page.screenshotSelector('.usersManager')).to.matchImage('load');
     });
 
+    it('should show password confirmation when signing out a single user', async function () {
+        await (await page.jQuery('.signoutuser:eq(0)')).click();
+        const modal = await page.waitForSelector('.modal.open', { visible: true });
+        await page.focus('.modal.open #currentUserPassword');
+        await page.waitForTimeout(250);
+        expect(await modal.screenshot()).to.matchImage({
+            imageName: 'signout_single_confirm',
+            comparisonThreshold: 0.025
+        });
+    });
+
+    it('should show signout success notification when confirmed sign out', async function () {
+        await page.type('.modal.open #currentUserPassword', superUserPassword);
+        await page.waitForTimeout(250);
+        await (await page.jQuery('.confirm-password-modal .confirm-password-btn:visible')).click();
+        await page.waitForTimeout(250);
+        expect(await page.screenshotSelector('.notification-success')).to.matchImage({
+            imageName: 'signout_single_confirmed',
+            comparisonThreshold: 0.025
+        });
+    });
 
     it('should change the results page when next is clicked', async function () {
+        await (await page.jQuery('.notification-success .close')).click();
+        await page.waitForTimeout(250);
         await page.click('.usersListPagination .btn.next');
         await page.mouse.move(-10, -10);
         await page.waitForNetworkIdle();
@@ -135,6 +177,7 @@ describe("UsersManager", function () {
 
     it('should change access for all rows in search when confirmed', async function () {
         await (await page.jQuery('.change-user-role-confirm-modal .modal-close:not(.modal-no):visible')).click();
+        await page.mouse.move(-10, -10);
         await page.waitForNetworkIdle();
 
         expect(await page.screenshotSelector('.usersManager')).to.matchImage('bulk_set_access');
@@ -448,12 +491,15 @@ describe("UsersManager", function () {
             $('.access-filter select').val('string:some').change();
         });
         await page.waitForNetworkIdle();
-        await page.waitForTimeout(250); // animation
+        await page.waitForFunction(() => !$('.userPermissionsEdit').hasClass('loading'));
 
-        expect(await page.screenshotSelector('.usersManager')).to.matchImage({
-            imageName: 'permissions_bulk_access_set_all',
-            comparisonThreshold: 0.0015
-        });
+        const roles = await getVisibleSiteRoles();
+
+        expect(roles.hunter12).to.equal('string:view');
+        expect(roles.hunter32).to.equal('string:view');
+        expect(roles.hunter82).to.equal('string:view');
+        expect(roles.hunter2).to.equal('string:write');
+        expect(roles.hunter22).to.equal('string:write');
     });
 
     it('should set access to single site when select in table is used', async function () {

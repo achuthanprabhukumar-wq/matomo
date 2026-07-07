@@ -12,6 +12,7 @@ namespace Piwik\Plugins\MultiSites\tests\Integration;
 use Piwik\DataTable;
 use Piwik\Period;
 use Piwik\Plugins\MultiSites\Dashboard;
+use Piwik\Policy\CnilPolicy;
 use Piwik\Tests\Framework\Fixture;
 use Piwik\Tests\Framework\TestCase\IntegrationTestCase;
 
@@ -44,6 +45,15 @@ class DashboardTest extends IntegrationTestCase
                                 ->getMock();
     }
 
+    public function tearDown(): void
+    {
+        CnilPolicy::setActiveStatus(1, false);
+        CnilPolicy::setActiveStatus(2, false);
+        CnilPolicy::setActiveStatus(null, false);
+
+        parent::tearDown();
+    }
+
     public function testConstructShouldFetchSitesWithNeededColumnsAndReturnEvenSitesHavingNoVisits()
     {
         $dayToFetch = '2012-12-13';
@@ -65,6 +75,8 @@ class DashboardTest extends IntegrationTestCase
             'previous_hits' => 0,
             'previous_nb_actions' => 0,
             'previous_revenue' => 0,
+            'ai_chatbots_requests'          => 0,
+            'previous_ai_chatbots_requests' => 0,
         ];
         $this->assertEquals($expectedTotals, $dashboard->getTotals());
 
@@ -103,6 +115,10 @@ class DashboardTest extends IntegrationTestCase
                 'previous_revenue' => 0,
                 'previous_nb_conversions' => 0,
                 'previous_nb_actions' => 0,
+                'ai_chatbots_requests'                 => 0,
+                'ai_chatbots_requests_evolution'       => '0%',
+                'ai_chatbots_requests_evolution_trend' => 0,
+                'previous_ai_chatbots_requests'        => 0,
             ],
             [
                 'label' => 'Site 2',
@@ -138,6 +154,10 @@ class DashboardTest extends IntegrationTestCase
                 'previous_revenue' => 0,
                 'previous_nb_conversions' => 0,
                 'previous_nb_actions' => 0,
+                'ai_chatbots_requests'                 => 0,
+                'ai_chatbots_requests_evolution'       => '0%',
+                'ai_chatbots_requests_evolution_trend' => 0,
+                'previous_ai_chatbots_requests'        => 0,
             ],
             [
                 'label' => 'Site 3',
@@ -173,6 +193,10 @@ class DashboardTest extends IntegrationTestCase
                 'previous_revenue' => 0,
                 'previous_nb_conversions' => 0,
                 'previous_nb_actions' => 0,
+                'ai_chatbots_requests'                 => 0,
+                'ai_chatbots_requests_evolution'       => '0%',
+                'ai_chatbots_requests_evolution_trend' => 0,
+                'previous_ai_chatbots_requests'        => 0,
             ],
         ];
         $this->assertEquals($expectedSites, $dashboard->getSites([], $limit = 10));
@@ -217,6 +241,10 @@ class DashboardTest extends IntegrationTestCase
                 'previous_revenue' => 0,
                 'previous_nb_conversions' => 0,
                 'previous_nb_actions' => 0,
+                'ai_chatbots_requests'                 => 0,
+                'ai_chatbots_requests_evolution'       => '0%',
+                'ai_chatbots_requests_evolution_trend' => 0,
+                'previous_ai_chatbots_requests'        => 0,
             ],
         ];
         $dashboard->search('site 2');
@@ -572,6 +600,69 @@ class DashboardTest extends IntegrationTestCase
         $this->assertSame('', $this->dashboard->getLastDate());
     }
 
+    public function testGetReturnedSiteIdsCollectsIdsRecursivelyFromGroupedSites()
+    {
+        $sites = $this->setSitesTable(4);
+        foreach ([1, 2, 3, 4] as $siteId) {
+            $sites->getRowFromLabel('Site' . $siteId)->setMetadata('idsite', $siteId);
+        }
+
+        $this->setGroupForSiteId($sites, 1, 'group1');
+        $this->setGroupForSiteId($sites, 3, 'group1');
+        $this->dashboard->setSitesTable($sites);
+
+        $actual = $this->invokeDashboardMethod($this->dashboard, 'getReturnedSiteIds');
+
+        $this->assertSame([1, 3, 2, 4], $actual);
+    }
+
+    public function testRoundReturnedSitesRoundsHitsOnlyForEnabledSiteRowsAndGroups(): void
+    {
+        CnilPolicy::setActiveStatus(null, false);
+        CnilPolicy::setActiveStatus(1, true);
+        CnilPolicy::setActiveStatus(2, false);
+
+        $sites = [
+            [
+                'label' => 'Site1',
+                'idsite' => 1,
+                'group' => 'group1',
+                'nb_visits' => 13,
+                'hits' => 18,
+                'previous_hits' => 14,
+            ],
+            [
+                'label' => 'Site2',
+                'idsite' => 2,
+                'group' => 'group1',
+                'nb_visits' => 13,
+                'hits' => 18,
+                'previous_hits' => 14,
+            ],
+            [
+                'label' => 'group1',
+                'isGroup' => 1,
+                'nb_visits' => 26,
+                'hits' => 36,
+                'previous_hits' => 28,
+            ],
+        ];
+
+        $actual = $this->invokeDashboardMethod($this->dashboard, 'roundReturnedSites', [$sites]);
+
+        $this->assertSame(10, $actual[0]['nb_visits']);
+        $this->assertSame(20, $actual[0]['hits']);
+        $this->assertSame(10, $actual[0]['previous_hits']);
+
+        $this->assertSame(13, $actual[1]['nb_visits']);
+        $this->assertSame(18, $actual[1]['hits']);
+        $this->assertSame(14, $actual[1]['previous_hits']);
+
+        $this->assertSame(30, $actual[2]['nb_visits']);
+        $this->assertSame(40, $actual[2]['hits']);
+        $this->assertSame(30, $actual[2]['previous_hits']);
+    }
+
     private function setGroupForSiteId(DataTable $table, $siteId, $groupName)
     {
         $table->getRowFromLabel('Site' . $siteId)->setMetadata('group', $groupName);
@@ -597,5 +688,17 @@ class DashboardTest extends IntegrationTestCase
         }
 
         return $sites;
+    }
+
+    /**
+     * @param mixed[] $arguments
+     * @return mixed
+     */
+    private function invokeDashboardMethod(Dashboard $dashboard, string $methodName, array $arguments = [])
+    {
+        $reflectionMethod = new \ReflectionMethod(Dashboard::class, $methodName);
+        $reflectionMethod->setAccessible(true);
+
+        return $reflectionMethod->invokeArgs($dashboard, $arguments);
     }
 }

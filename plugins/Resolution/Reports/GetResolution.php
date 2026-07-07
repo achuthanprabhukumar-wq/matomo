@@ -11,8 +11,10 @@ namespace Piwik\Plugins\Resolution\Reports;
 
 use Piwik\Piwik;
 use Piwik\Plugin\ViewDataTable;
+use Piwik\Policy\CnilPolicy;
 use Piwik\Plugins\Resolution\Columns\Resolution;
 use Piwik\Plugin\ReportsProvider;
+use Piwik\Policy\PolicyManager;
 
 class GetResolution extends Base
 {
@@ -37,5 +39,11 @@ class GetResolution extends Base
         return array(
             ReportsProvider::factory('Resolution', 'getConfiguration'),
         );
+    }
+
+    public function isEnabled()
+    {
+        // Metadata visibility is global-only here, so check the policy state directly.
+        return !PolicyManager::isPolicyActive(CnilPolicy::class, $idSite = null);
     }
 }

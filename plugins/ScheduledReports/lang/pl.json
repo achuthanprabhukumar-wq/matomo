@@ -23,8 +23,6 @@
         "PleaseFindBelow": "Prosimy odszukać %2$s w poniższym raporcie %1$s .",
         "PluginDescription": "Utwórz osobiste raporty i ich harmonogramy aby codziennie, co tydzień lub raz w miesiącu trafiały one do jednej lub kilku osób. Dostępne jest kilka formatów (html, pdf, csv, obrazki).",
         "ReportFormat": "Format raportu",
-        "ReportHour": "Wyślij raport o %s",
-        "ReportHourWithUTC": "O godzinie %s UTC",
         "ReportIncludeNWebsites": "Raport będzie zawierał główne wskaźniki dla wszystkich serwisów, które miał przynajmniej jedne odwiedziny (spośród dostępnych %s serwisów).",
         "ReportSent": "Raport wysłany",
         "ReportType": "Wyślij raport przez",
@@ -32,7 +30,6 @@
         "ReportsIncluded": "Zawarte statystyki",
         "SegmentAppliedToReports": "Grupa '%s' została nałożona na raport.",
         "Segment_Deletion_Error": "Tej grupy nie można usunąć lub ukryć przed innymi użytkownikam, ponieważ jest wykorzystywana do generowania raportów e-mail %s. Proszę ponów próbę po usunięciu tej grupy z raportu.",
-        "SendReportNow": "Wyślij raport teraz",
         "SendReportTo": "Wyślij raport do",
         "SentFromX": "Wysłane z %s.",
         "SentToMe": "Wyślij do mnie",
@@ -40,6 +37,7 @@
         "ThereIsNoReportToManage": "Brak raportu dla strony %s",
         "TopLinkTooltip": "Skonfiguruj Raport E-mail aby statystyki Matomo'a były dostarczane automatycznie do Twojej skrzynki odbiorczej lub skrzynki Twojego Klienta!",
         "TopOfReport": "Powrót na górę strony",
+        "Unsubscribe": "Zrezygnuj z subskrypcji",
         "UpdateReport": "Aktualizuj raport",
         "WeeklyScheduleHelp": "Harmonogram tygodniowy: raport będzie wysyłany w każdy pierwszy poniedziałek każdego tygodnia."
     }

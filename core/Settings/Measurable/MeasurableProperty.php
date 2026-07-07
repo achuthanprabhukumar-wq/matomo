@@ -12,6 +12,7 @@ namespace Piwik\Settings\Measurable;
 use Piwik\Container\StaticContainer;
 use Piwik\Piwik;
 use Exception;
+use Piwik\Settings\Storage\Factory;
 
 /**
  * Describes a Measurable property for a measurable type such as a website, a mobile app, ....
@@ -37,8 +38,6 @@ class MeasurableProperty extends \Piwik\Settings\Setting
     );
 
     /**
-     * Constructor.
-     *
      * @param string $name The persisted name of the setting.
      * @param mixed $defaultValue  Default value for this setting if no value was specified.
      * @param string $type Eg an array, int, ... see TYPE_* constants
@@ -56,6 +55,7 @@ class MeasurableProperty extends \Piwik\Settings\Setting
 
         $this->idSite = $idSite;
 
+        /** @var Factory */
         $storageFactory = StaticContainer::get('Piwik\Settings\Storage\Factory');
         $this->storage = $storageFactory->getSitesTable($idSite);
     }

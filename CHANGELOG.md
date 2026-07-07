@@ -2,7 +2,141 @@
 
 This is the Developer Changelog for Matomo platform developers. All changes in our HTTP APIs, Plugins, Themes, SDKs, etc. are listed below.
 
-The Product Changelog at **[matomo.org/changelog](https://matomo.org/changelog)** lets you see more details about any Matomo release, such as the list of new guides and FAQs, security fixes, and links to all closed issues. 
+The Product Changelog at **[matomo.org/changelog](https://matomo.org/changelog)** lets you see more details about any Matomo release, such as the list of new guides and FAQs, security fixes, and links to all closed issues.
+
+## Matomo 5.12.0
+
+### JavaScript Tracker
+
+#### New APIs
+* The methods `setIgnoreCampaignAttributionForSources` and `getIgnoreCampaignAttributionForSources` have been added to
+  the JavaScript tracker. They allow setting/getting sources whose campaign values in the current URL should be ignored 
+  for attribution. Matching campaign parameters are still kept in the tracked URL/request.
+
+### New APIs
+* `Record::setAggregatedRecordTransform()` lets a blob record register a callback that is applied to its aggregated
+  table during non-day archiving, after the day blobs are aggregated together and before the table is truncated and
+  stored. Use it together with `Record::setBlobColumnAggregationOps()` (marking a column `'skip'`) to recompute columns
+  that cannot be summed across child periods — for example a table-relative ratio, index or score — so they can also be
+  used as the sort column for truncation. It applies on both the standard blob path and the built-from-flat path
+  (`Record::setBuiltFromFlatRecord()`), where the flat base record and the hierarchy rebuilt from it are each
+  transformed on their own table. A matching optional `$postAggregationTransform` parameter was added to
+  `ArchiveProcessor::aggregateDataTableRecords()`.
+* The reporting menu can now be split into several top-level sections (in addition to the default
+  "Analytics" menu). A category declares which section(s) it belongs to via `Category::setGroups()`
+  (and the protected `$groups` property); `API.getReportPagesMetadata` now exposes a `groups` field per
+  category. Each non-default group automatically gets a top-menu entry that opens the regular reporting
+  single-page-app filtered to that group (the active section is carried in the URL hash), so reports stay
+  within the same SPA and quick search. The first such section, "AI Insights", surfaces the existing
+  AI Assistants reports.
+
+### New config.ini.php settings
+* `datatable_archiving_maximum_rows_actions_flat` caps the number of rows used when flat-archiving
+  page/title Actions reports before the hierarchy is rebuilt (set to `0` to keep the legacy
+  hierarchical-only Actions archiving). See `Record::setAggregatedRecordTransform()` above.
+* `datatable_archiving_maximum_rows_ai_chatbot_content` caps the number of content URLs
+  (pages/documents) listed in the AI Chatbots Content Requests reports.
+* `datatable_archiving_maximum_rows_ai_chatbot_favoured_pages` caps the number of page URLs listed in
+  the Human-Favoured / AI-Favoured Pages reports.
+
+## Matomo 5.11.0
+
+### New APIs
+* `SitesManager.addSite` and `SitesManager.updateSite` now accept an optional `description` parameter (up to 255 characters). Site entities
+  returned by the SitesManager APIs now include a `description` field.
+* `CustomDimensions.configureNewCustomDimension` and `CustomDimensions.configureExistingCustomDimension` now accept an optional `description`
+  parameter (up to 1000 characters) to provide additional context for a custom dimension.
+* New ViewDataTable display properties were added: `Config::$report_supports_flatten`, `Config::$show_flatten_table_export` and
+  `Config::$export_parameters_to_modify` / `RequestConfig::$export_parameters_to_modify`, allowing reports to control flattening availability and
+  export link parameters independently of the UI.
+* New Vue components are exported from CoreHome for use by plugins: `MatomoModal`, `DraggableList` and `SearchInput`.
+* Themes can now customize the alternative border color using `@theme-color-border-alternative`.
+
+### HTTP API
+* `ScheduledReports.sendReport` now accepts `range` as `period` parameter.
+* CSV/TSV exports now replace carriage return characters in values with spaces (in addition to tabs).
+
+### Deprecations
+* The theme variable `@theme-color-border` (`ThemeStyles::$colorBorder`) is deprecated; use `@theme-color-border-alternative` instead.
+
+## Matomo 5.10.0
+
+### New APIs
+* Widgets can now be declared as client-rendered through `WidgetConfig::setClientSideComponent()` and `WidgetConfig::setClientSideProps()`. `API.getWidgetMetadata` and `API.getReportPagesMetadata` now expose a `clientComponent` field for these widgets, and Widgetize/dashboard rendering supports bootstrapping them without an extra widget controller request.
+
+### Deprecations
+* The methods `ArchiveTableCreator::getNumericTable()` and `ArchiveTableCreator::getBlobTable()` now support a `$createIfMissing` parameter. Omitting this parameter is deprecated; pass `true` to create missing archive tables or `false` to return only existing tables. In Matomo 6 the default behavior for omitted calls will change to lookup-only.
+
+## Matomo 5.9.0
+
+### New APIs
+* `UsersManager.logoutUser` was added to sign a user out of all sessions.
+
+### Deprecations
+* The jQuery UI `liveWidget` API (`$.fn.liveWidget`) is now deprecated and will be removed in Matomo 6. Use `Live.AutoRefreshWidget` vue component instead.
+
+## Matomo 5.8.0
+
+### Breaking Changes
+* API requests that provide conflicting authentication values for `token_auth` or `force_api_session` across request sources (for example GET and POST) now fail with `400 Bad Request` instead of applying precedence.
+* Category names returned by `API.getReportMetadata` were updated to match UI terminology. Plugin integrations expecting old names may break:
+    - `Actions` is now `Behaviour`
+    - `Referrers` is now `Acquisition`
+* `AjaxHelper` no longer supports `returnResponseObject` for bulk requests (`API.getBulkRequest` / array-based `AjaxHelper.fetch`). Bulk requests now always resolve to merged response data.
+
+
+### New config.ini.php settings
+* `API_bulk_request_limit` sets the maximum number of URLs allowed in `API.getBulkRequest` for authenticated users (-1 disables the limit).
+
+### HTTP API
+* `API.getBulkRequest` now enforces request limits (10 for anonymous users without view access, 50 for anonymous users with view access, or the lower configured limit if `API_bulk_request_limit` is set).
+
+## Matomo 5.7.1
+
+### Breaking Changes
+* HTTP APIs that accept `idSite` now validate it more strictly. Invalid values that were previously ignored can now trigger a 400 Bad Request, and some endpoints now enforce integer `idSite` parameters (e.g., non-numeric values may raise a TypeError).
+
+## Matomo 5.7.0
+
+### Breaking Changes
+
+* Client-side faults now map to consistent 4xx responses:
+  - Missing/invalid API params return 400
+  - Invalid actions return 404
+  - Missing chunks return 404
+  - Missing plugins return 404
+  - Deactivated plugins return 403
+
+### New config.ini.php settings
+* Proxy scheme headers (like `X-Forwarded-Proto`) are now configurable via `proxy_scheme_headers`.
+
+### New Features
+
+* New event `PrivacyManager.deleteDataSubjectsForDeletedSites` to enable plugins to be GDPR compliant, when tracking visit unrelated data.
+
+### HTTP Tracking API
+
+* The new Bot Tracking plugin now supports analyzing requests from AI bots. See https://developer.matomo.org/api-reference/tracking-api#tracking-bots for supported tracking parameters.
+
+
+## Matomo 5.6.0
+
+### New Features
+
+* Themes can now customize the focus ring colors using `@theme-color-focus-ring` (used globally) and `@theme-color-focus-ring-alternative` (used in header navigation on solid background).
+
+
+## Matomo 5.5.0
+
+### Breaking Changes
+
+* Annotations were moved to their own database table. Plugins trying to access annotations without using the API might need to be updated.
+* AI Assistants are now detected as new referrer type (ID=8), which allows improved reports and better segmentation
+
+### JavaScript Tracker
+
+* A new method `setReferralUrlMaxLength` has been added. It allows limiting the referral cookie size.
+
 
 ## Matomo 5.4.0
 

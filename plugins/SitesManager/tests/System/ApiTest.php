@@ -12,6 +12,7 @@ namespace Piwik\Plugins\SitesManager\tests\System;
 use Piwik\Db\Schema\Mysql;
 use Piwik\Option;
 use Piwik\Plugins\SitesManager\tests\Fixtures\ManySites;
+use Piwik\Policy\CnilPolicy;
 use Piwik\Tests\Framework\TestCase\SystemTestCase;
 
 /**
@@ -102,6 +103,30 @@ class ApiTest extends SystemTestCase
     private function setInstallVersion($installVersion)
     {
         Option::set(Mysql::OPTION_NAME_MATOMO_INSTALL_VERSION, $installVersion);
+    }
+
+    public function testGetSiteSettingsWithComplianceAvailable(): void
+    {
+        $this->runApiTests('SitesManager.getSiteSettings', [
+            'testSuffix' => '_compliancePolicyFeatureFlagEnabled',
+            'otherRequestParameters' => [
+                'idSite' => '1',
+            ],
+        ]);
+    }
+
+    public function testGetSiteSettingsWhenPolicyEnforced(): void
+    {
+        CnilPolicy::setActiveStatus(null, true);
+
+        $this->runApiTests('SitesManager.getSiteSettings', [
+            'testSuffix' => '_compliancePolicyEnforced',
+            'otherRequestParameters' => [
+                'idSite' => '1',
+            ],
+        ]);
+
+        CnilPolicy::setActiveStatus(null, false);
     }
 
     public static function getOutputPrefix()

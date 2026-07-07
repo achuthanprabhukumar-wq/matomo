@@ -1,5 +1,12 @@
 <?php
 
+/**
+ * Matomo - free/libre analytics platform
+ *
+ * @link    https://matomo.org
+ * @license https://www.gnu.org/licenses/gpl-3.0.html GPL v3 or later
+ */
+
 namespace Piwik\Settings\Interfaces\Traits;
 
 use Piwik\Policy\CompliancePolicy;
@@ -16,8 +23,9 @@ trait PolicyComparisonTrait
      */
     public static function getPolicyRequiredValues(?int $idSite = null): array
     {
-        $policyValues = self::getPolicyRequirements();
+        $policyValues = static::getPolicyRequirements();
 
+        /** @var class-string<CompliancePolicy> $policy */
         foreach (array_keys($policyValues) as $policy) {
             if (!$policy::isActive($idSite)) {
                 $policyValues[$policy] = null;
@@ -25,6 +33,17 @@ trait PolicyComparisonTrait
         }
 
         return $policyValues;
+    }
+
+    /**
+     * @param T|null $settingValue
+     * @return T|null
+     */
+    public static function getPolicyValuesAgainstProvided($settingValue, ?int $idSite = null)
+    {
+        $values = static::getPolicyRequiredValues($idSite);
+        $values[] = $settingValue;
+        return static::getStrictestValueFromArray($values);
     }
 
     /**

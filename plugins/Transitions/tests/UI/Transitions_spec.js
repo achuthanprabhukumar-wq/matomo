@@ -8,10 +8,16 @@
  */
 
 describe("Transitions", function () {
-    this.timeout(0);
-
     var generalParams = 'idSite=1&period=year&date=2012-08-09',
         urlBase = 'module=CoreHome&action=index&' + generalParams;
+
+    async function setThemeMode(themeMode)
+    {
+        await page.evaluate((mode) => {
+            window.piwik.setThemeMode(mode);
+        }, themeMode);
+        await page.waitForFunction((mode) => window.piwik.getThemeMode() === mode, {}, themeMode);
+    }
 
     async function selectValue(field, title)
     {
@@ -89,14 +95,59 @@ describe("Transitions", function () {
 
     it('should show period not allowed for disabled periods', async function () {
 
-        testEnvironment.overrideConfig('Transitions_1', 'max_period_allowed', 'day');
-        testEnvironment.save();
+        await testEnvironment.overrideConfig('Transitions_1', 'max_period_allowed', 'day');
+        await testEnvironment.save();
+        try {
+          await page.goto("?" + urlBase + "#?" + generalParams + "&category=General_Actions&subcategory=Transitions_Transitions");
+          await page.waitForNetworkIdle();
+          expect(await page.screenshotSelector('.pageWrap'))
+            .to
+            .matchImage('transitions_report_period_not_allowed');
+        } finally {
+          await testEnvironment.overrideConfig('Transitions_1', 'max_period_allowed', 'all');
+          await testEnvironment.save();
+        }
+    });
 
-        await page.goto("?" + urlBase + "#?" + generalParams + "&category=General_Actions&subcategory=Transitions_Transitions");
+    it('should escape the export overlay title correctly', async function () {
+        await page.goto("?" + urlBase + "#?idSite=1&period=day&date=2012-01-16&category=General_Actions&subcategory=Transitions_Transitions");
         await page.waitForNetworkIdle();
-        expect(await page.screenshotSelector('.pageWrap')).to.matchImage('transitions_report_period_not_allowed');
 
-        testEnvironment.overrideConfig('Transitions_1', 'max_period_allowed', 'all');
-        testEnvironment.save();
+        await page.webpage.evaluate(() => {
+            $('[name="actionName"] input.select-dropdown').click()
+        });
+        await page.waitForTimeout(500);
+        await page.webpage.evaluate(() => {
+            $('[name="actionName"] .dropdown-content li:contains("script"):last').click()
+        });
+        await page.waitForNetworkIdle();
+
+        await page.click('.icon-export');
+        await page.waitForTimeout(100);
+
+        const title = await page.$('.ui-dialog-title');
+        const titleText = await title.getProperty('textContent');
+
+        expect(await titleText.jsonValue()).to.be.equal('http://example.org/<script>_x(6)</script> Transitions');
+    });
+
+    it('should keep the transitions popover open when the theme changes live', async function() {
+        await page.goto('about:blank');
+        await page.goto("?" + urlBase + "#?" + generalParams + "&category=General_Actions&subcategory=Actions_SubmenuPageTitles");
+
+        await setThemeMode('light');
+
+        await (await page.jQuery('div.dataTable tbody tr:contains("Space Quest")')).hover();
+        await (await page.jQuery('a.actionTransitions:visible')).hover(); // necessary to get popover to display
+        await (await page.jQuery('a.actionTransitions:visible')).click();
+
+        await page.waitForNetworkIdle();
+        await page.waitForSelector('#Transitions_CenterBox');
+
+        await setThemeMode('dark');
+        const centerBoxCount = await page.evaluate(() => $('#Transitions_CenterBox').length);
+        expect(centerBoxCount).to.be.equal(1);
+
+        await setThemeMode('light');
     });
 });

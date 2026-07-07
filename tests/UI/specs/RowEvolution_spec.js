@@ -14,6 +14,17 @@ describe("RowEvolution", function () {
     const ecommerceItemReportWidgetized = "?module=Widgetize&action=iframe&moduleToWidgetize=Goals&actionToWidgetize=getItemsSku&idGoal=ecommerceAbandonedCart"
                                       + "&idSite=1&period=year&date=2012-02-09&viewDataTable=ecommerceAbandonedCart&filter_limit=-1";
 
+    const waitForRowEvolutionAnnotations = async () => {
+        await page.waitForFunction("$('.ui-dialog .evolution-annotations > span').length > 0");
+    };
+
+    const setThemeMode = async (themeMode) => {
+        await page.evaluate((mode) => {
+            window.piwik.setThemeMode(mode);
+        }, themeMode);
+        await page.waitForFunction((mode) => window.piwik.getThemeMode() === mode, {}, themeMode);
+    };
+
     it('should load when icon clicked in ViewDataTable', async function() {
         await page.goto(viewDataTableUrl);
         await page.waitForSelector('tbody tr:first-child')
@@ -25,6 +36,7 @@ describe("RowEvolution", function () {
 
         await page.waitForSelector('.ui-dialog');
         await page.waitForNetworkIdle();
+        await waitForRowEvolutionAnnotations();
 
         const dialog = await page.$('.ui-dialog');
         expect(await dialog.screenshot()).to.matchImage('row_evolution');
@@ -118,9 +130,76 @@ describe("RowEvolution", function () {
 
         await page.waitForSelector('.ui-dialog', { visible: true });
         await page.waitForNetworkIdle();
-        await page.waitForTimeout(250); // wait till annotations are rendered
+        await waitForRowEvolutionAnnotations();
 
         const dialog = await page.$('.ui-dialog');
         expect(await dialog.screenshot()).to.matchImage('row_evolution_ecommerce_item');
+    });
+
+    it('should keep row evolution open when the theme changes live', async function() {
+        await page.goto(viewDataTableUrl);
+        await setThemeMode('light');
+
+        const row = await page.jQuery('tbody tr:contains("corruption")');
+        await row.hover();
+        const icon = await page.jQuery('tbody tr:contains("corruption") a.actionRowEvolution');
+        await icon.click();
+
+        await setThemeMode('dark');
+        await waitForRowEvolutionAnnotations();
+
+        const dialogCount = await page.evaluate(() => $('.ui-dialog').length);
+        const hasRowEvolution = await page.evaluate(() => $('.ui-dialog .rowevolution').length);
+        expect(dialogCount).to.be.equal(1);
+        expect(hasRowEvolution).to.be.equal(1);
+
+        await setThemeMode('light');
+    });
+
+    it('refuses to steer the popover request to a different module/action', async function() {
+        const attackerJson = JSON.stringify({
+            module: 'CoreAdminHome',
+            action: 'setMailSettings',
+            mailHost: 'attacker.example',
+            force_api_session: 0,
+            format: 'json'
+        });
+        const popoverPayload = 'RowAction:RowEvolution:Actions.getPageUrls:'
+            + encodeURIComponent(attackerJson) + ':attacker-label';
+        const hashValue = encodeURIComponent(popoverPayload).replace(/%/g, '$');
+        const attackUrl = '?module=CoreHome&action=index&idSite=1&period=day&date=yesterday'
+            + '#?popover=' + hashValue;
+
+        const popoverRequests = [];
+        let listening = true;
+        const onRequest = (req) => {
+            if (!listening) {
+                return;
+            }
+            const url = req.url();
+            if (url.indexOf('apiMethod=Actions.getPageUrls') !== -1) {
+                popoverRequests.push(url);
+            }
+        };
+        page.on('request', onRequest);
+
+        try {
+            await page.goto('about:blank');
+            await page.goto(attackUrl);
+            await page.waitForNetworkIdle();
+        } finally {
+            listening = false;
+        }
+
+        expect(popoverRequests.length).to.be.above(0);
+        popoverRequests.forEach((url) => {
+            expect(url).to.contain('module=CoreHome');
+            expect(url).to.contain('action=getRowEvolutionPopover');
+            expect(url).to.not.contain('module=CoreAdminHome');
+            expect(url).to.not.contain('action=setMailSettings');
+            expect(url).to.not.contain('force_api_session=0');
+            expect(url).to.not.match(/[?&]format=json(&|$)/);
+            expect(url).to.not.contain('mailHost=');
+        });
     });
 });

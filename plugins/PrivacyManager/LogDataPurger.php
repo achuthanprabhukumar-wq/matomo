@@ -43,9 +43,6 @@ class LogDataPurger
      */
     private $rawLogDao;
 
-    /**
-     * Constructor.
-     */
     public function __construct(LogDeleter $logDeleter, RawLogDao $rawLogDao)
     {
         $this->logDeleter = $logDeleter;
@@ -145,7 +142,7 @@ class LogDataPurger
 
     /**
      * get highest idVisit to delete rows from
-     * @return string
+     * @return string|false
      */
     private function getDeleteIdVisitOffset($deleteLogsOlderThan)
     {

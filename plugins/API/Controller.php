@@ -22,9 +22,6 @@ use Piwik\Url;
 use Piwik\UrlHelper;
 use Piwik\View;
 
-/**
- *
- */
 class Controller extends \Piwik\Plugin\Controller
 {
     public function index()
@@ -32,8 +29,6 @@ class Controller extends \Piwik\Plugin\Controller
         $tokenAuth = StaticContainer::get(AuthenticationToken::class)->getAuthToken() ?: 'anonymous';
         $format = Common::getRequestVar('format', false);
         $serialize = Common::getRequestVar('serialize', false);
-
-        $token = 'token_auth=' . $tokenAuth;
 
         // when calling the API through http, we limit the number of returned results
         if (!isset($_GET['filter_limit'])) {
@@ -44,7 +39,9 @@ class Controller extends \Piwik\Plugin\Controller
             }
         }
 
-        $request  = new Request($token);
+        $request  = new Request([
+            'token_auth' => $tokenAuth,
+        ]);
         $response = $request->process();
 
         if (is_array($response)) {
@@ -66,7 +63,7 @@ class Controller extends \Piwik\Plugin\Controller
         Piwik::checkUserHasSomeViewAccess();
 
         $ApiDocumentation = new DocumentationGenerator();
-        $prefixUrls = Common::getRequestVar('prefixUrl', 'https://demo.matomo.org/', 'string');
+        $prefixUrls = Common::getRequestVar('prefixUrl', 'https://demo.matomo.cloud/', 'string');
         $parsedUrl = parse_url($prefixUrls);
         if (empty($parsedUrl['host']) || !UrlHelper::isLookLikeUrl($prefixUrls) || strpos($prefixUrls, 'http') !== 0 || !Url::isValidHost($parsedUrl['host'])) {
             $prefixUrls = '';

@@ -23,10 +23,9 @@ use Piwik\Plugins\CoreHome\SystemSummary;
 use Piwik\Plugins\Goals\RecordBuilders\ProductRecord;
 use Piwik\Tracker\GoalManager;
 use Piwik\Category\Subcategory;
+use Piwik\Plugins\SegmentEditor\Settings\LimitSegments;
+use Piwik\Segment\SegmentsList;
 
-/**
- *
- */
 class Goals extends \Piwik\Plugin
 {
     public static function getReportsWithGoalMetrics()
@@ -111,6 +110,7 @@ class Goals extends \Piwik\Plugin
             'Metric.addComputedMetrics'              => 'addComputedMetrics',
             'System.addSystemSummaryItems'           => 'addSystemSummaryItems',
             'Archiver.addRecordBuilders'             => 'addRecordBuilders',
+            'Segment.filterSegments'                 => 'filterSegments',
         );
         return $hooks;
     }
@@ -271,11 +271,8 @@ class Goals extends \Piwik\Plugin
     }
 
     /**
-     * Returns the Metadata for the Goals plugin API.
-     * The API returns general Goal metrics: conv, conv rate and revenue globally
-     * and for each goal.
-     *
-     * Also, this will update metadata of all other reports that have Goal segmentation
+     * Adds Goal metrics (conversions, conversion rate, revenue) to the metadata of all
+     * other reports that support Goal segmentation.
      */
     public function getReportMetadataEnd(&$reports, $info)
     {
@@ -482,6 +479,10 @@ class Goals extends \Piwik\Plugin
         $translationKeys[] = 'Goals_ClickToViewThisGoal';
         $translationKeys[] = 'Goals_ManageGoals';
         $translationKeys[] = 'Goals_GoalName';
+        $translationKeys[] = 'Goals_GoalNameHelpText';
+        $translationKeys[] = 'Goals_GoalNamePlaceholder';
+        $translationKeys[] = 'Goals_GoalDescriptionHelpText';
+        $translationKeys[] = 'Goals_GoalDescriptionPlaceholder';
         $translationKeys[] = 'Goals_GoalIsTriggeredWhen';
         $translationKeys[] = 'Goals_ThereIsNoGoalToManage';
         $translationKeys[] = 'Goals_ManuallyTriggeredUsingJavascriptFunction';
@@ -530,5 +531,23 @@ class Goals extends \Piwik\Plugin
         $translationKeys[] = 'General_Yes';
         $translationKeys[] = 'General_No';
         $translationKeys[] = 'General_OrCancel';
+        $translationKeys[] = 'Goals_GoalCreated';
+        $translationKeys[] = 'Goals_GoalUpdated';
+        $translationKeys[] = 'Goals_ViewGoalReport';
+    }
+
+    public function filterSegments(SegmentsList &$list, array $idSites)
+    {
+        $limitSegmentsSettingEnabled = false;
+        if (empty($idSites)) {
+            $limitSegmentsSettingEnabled = LimitSegments::getInstance()->getValue();
+        } else {
+            foreach ($idSites as $idsite) {
+                $limitSegmentsSettingEnabled |= LimitSegments::getInstance($idsite)->getValue();
+            }
+        }
+        if ($limitSegmentsSettingEnabled) {
+            $list->remove('Goals_Conversion', 'orderId');
+        }
     }
 }

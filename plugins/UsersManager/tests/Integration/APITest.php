@@ -19,6 +19,7 @@ use Piwik\Common;
 use Piwik\Config;
 use Piwik\Container\StaticContainer;
 use Piwik\Date;
+use Piwik\DbHelper;
 use Piwik\EventDispatcher;
 use Piwik\Mail;
 use Piwik\NoAccessException;
@@ -28,6 +29,7 @@ use Piwik\Plugins\CoreAdminHome\Emails\UserCreatedEmail;
 use Piwik\Plugins\UsersManager\Emails\UserInviteEmail;
 use Piwik\Plugins\UsersManager\SystemSettings;
 use Piwik\Plugins\SitesManager\API as SitesManagerAPI;
+use Piwik\Settings\Storage\UserScopedSettingsAccessManager;
 use Piwik\Plugins\UsersManager\API;
 use Piwik\Plugins\UsersManager\Model;
 use Piwik\Plugins\UsersManager\UsersManager;
@@ -231,31 +233,57 @@ class APITest extends IntegrationTestCase
         self::assertEquals('5', $siteId);
     }
 
+    public function testSetUserPreferenceStoresPreferenceUnderStoredLoginWhenUsingCollationEquivalentLogin()
+    {
+        // "userLogín" is a distinct byte string from the stored "userLogin", but the database matches
+        // logins case- and accent-insensitively, so it resolves to the same user. The preference must
+        // be stored under the stored login rather than the raw request value.
+        $this->api->setUserPreference('userLogín', API::PREFERENCE_DEFAULT_REPORT, 5);
+
+        $settingsStore = StaticContainer::get(UserScopedSettingsAccessManager::class);
+        self::assertEquals(5, $settingsStore->get('UsersManager', $this->login, API::PREFERENCE_DEFAULT_REPORT, false));
+    }
+
+    public function testSetUserPreferenceWritesLegacyOptionForIsLdapUserCompatibility()
+    {
+        $this->api->setUserPreference($this->login, 'isLDAPUser', 1);
+
+        $settingsStore = StaticContainer::get(UserScopedSettingsAccessManager::class);
+        self::assertEquals(1, $settingsStore->get('UsersManager', $this->login, 'isLDAPUser', false));
+
+        $legacyOptionName = $this->login . API::OPTION_NAME_PREFERENCE_SEPARATOR . 'isLDAPUser';
+        self::assertEquals(1, Option::get($legacyOptionName));
+    }
+
     public function testInitUserPreferenceWithDefaultShouldSaveTheDefaultPreferenceIfPreferenceIsNotSet()
     {
+        $settingsStore = StaticContainer::get(UserScopedSettingsAccessManager::class);
+
         // make sure there is no value saved so it will use default preference
-        $siteId = Option::get($this->getPreferenceId(API::PREFERENCE_DEFAULT_REPORT));
+        $siteId = $settingsStore->get('UsersManager', $this->login, API::PREFERENCE_DEFAULT_REPORT, false);
         self::assertFalse($siteId);
 
         $this->api->initUserPreferenceWithDefault($this->login, API::PREFERENCE_DEFAULT_REPORT);
 
         // make sure it did save the preference
-        $siteId = Option::get($this->getPreferenceId(API::PREFERENCE_DEFAULT_REPORT));
+        $siteId = $settingsStore->get('UsersManager', $this->login, API::PREFERENCE_DEFAULT_REPORT, false);
         self::assertEquals('1', $siteId);
     }
 
     public function testInitUserPreferenceWithDefaultShouldNotSaveTheDefaultPreferenceIfPreferenceIsAlreadySet()
     {
-        // set value so there will already be a default
-        Option::set($this->getPreferenceId(API::PREFERENCE_DEFAULT_REPORT), '999');
+        $settingsStore = StaticContainer::get(UserScopedSettingsAccessManager::class);
 
-        $siteId = Option::get($this->getPreferenceId(API::PREFERENCE_DEFAULT_REPORT));
+        // set value so there will already be a default
+        $settingsStore->set('UsersManager', $this->login, API::PREFERENCE_DEFAULT_REPORT, '999');
+
+        $siteId = $settingsStore->get('UsersManager', $this->login, API::PREFERENCE_DEFAULT_REPORT, false);
         self::assertEquals('999', $siteId);
 
         $this->api->initUserPreferenceWithDefault($this->login, API::PREFERENCE_DEFAULT_REPORT);
 
         // make sure it did not save the preference
-        $siteId = Option::get($this->getPreferenceId(API::PREFERENCE_DEFAULT_REPORT));
+        $siteId = $settingsStore->get('UsersManager', $this->login, API::PREFERENCE_DEFAULT_REPORT, false);
         self::assertEquals('999', $siteId);
     }
 
@@ -324,6 +352,77 @@ class APITest extends IntegrationTestCase
         $settings->allowedEmailDomains->setValue(['example.org', 'password.de', 'matomo.com']);
 
         $this->api->addUser('userLogin2', 'password', 'userlogin2@password.com');
+    }
+
+    public function testLogoutUserFailsWhenNoPassword()
+    {
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('UsersManager_ConfirmWithReAuthentication');
+
+        $_GET['token_auth'] = 'anyToken';
+        $_GET['force_api_session'] = 1;
+        try {
+            $this->api->logoutUser($this->login);
+        } finally {
+            unset($_GET['token_auth']);
+            unset($_GET['force_api_session']);
+        }
+    }
+
+    public function testLogoutUserFailsWhenWrongPassword()
+    {
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('UsersManager_CurrentPasswordNotCorrect');
+
+        $_GET['token_auth'] = 'anyToken';
+        $_GET['force_api_session'] = 1;
+        try {
+            $this->api->logoutUser($this->login, 'foopass');
+        } finally {
+            unset($_GET['token_auth']);
+            unset($_GET['force_api_session']);
+        }
+    }
+
+    public function testLogoutUserUserNotExistsShouldFail()
+    {
+        $this->expectExceptionMessage('UsersManager_ExceptionUserDoesNotExist');
+        $this->api->logoutUser('foobar');
+    }
+
+    public function testLogoutUserNotSuperUserShouldFail()
+    {
+        FakeAccess::$superUser = false;
+        $this->expectExceptionMessage('checkUserHasSuperUserAccess Fake exception');
+        $this->api->logoutUser('foobar');
+    }
+
+    public function testLogoutUserAnonymousShouldFail()
+    {
+        $this->expectExceptionMessage('UsersManager_ExceptionEditAnonymous');
+        $this->api->logoutUser('anonymous');
+    }
+
+    public function testLogoutUserEmptyLoginShouldFail()
+    {
+        $this->expectExceptionMessage('userlogin: General_ValidatorErrorEmptyValue');
+        $this->api->logoutUser('');
+    }
+
+    public function testLogoutUserCollationEquivalentAnonymousLoginShouldFail()
+    {
+        DbHelper::createAnonymousUser();
+
+        // "anonymoüs" is a distinct byte string from "anonymous" but resolves to the reserved
+        // anonymous user under the database collation, so it must be treated as anonymous.
+        $this->expectExceptionMessage('UsersManager_ExceptionEditAnonymous');
+        $this->api->logoutUser('anonymoüs');
+    }
+
+    public function testLogoutUserDeleteSessionUserShouldNotThrowErrorIfNoSessionExists()
+    {
+        $this->api->addUser('userLogin2', 'password', 'userlogin2@password.com');
+        $this->assertNull($this->api->logoutUser('userLogin2'));
     }
 
     public function testUpdateUser()
@@ -889,6 +988,22 @@ class APITest extends IntegrationTestCase
         self::assertResultCountHeader(5);
     }
 
+    public function testGetUsersPlusRoleDoesNotThrowWhenInviteExpiredAtIsCorrupted()
+    {
+        $this->api->inviteUser('pendingLoginTest', 'pendingLoginTest@matomo.org', 1);
+        self::assertTrue($this->model->isPendingUser('pendingLoginTest'));
+
+        // simulate a row corrupted by a bug that stored an out-of-range expiry date directly,
+        // bypassing the API validation (eg. from before this validation existed)
+        $this->model->updateUserFields('pendingLoginTest', ['invite_expired_at' => '0000-00-00 00:00:00']);
+
+        $users = $this->api->getUsersPlusRole(1, null, 0, 'pendingLoginTest');
+
+        self::assertCount(1, $users);
+        self::assertEquals('pendingLoginTest', $users[0]['login']);
+        self::assertEquals('expired', $users[0]['invite_status']);
+    }
+
     public function testGetSitesAccessForUserShouldReturnAccessForUser()
     {
         $this->api->setUserAccess('userLogin', 'admin', [1]);
@@ -1122,16 +1237,75 @@ class APITest extends IntegrationTestCase
         $this->api->setUserAccess('anonymous', 'write', [1]);
     }
 
+    public function testSetUserAccessCannotSetAdminToAnonymousUsingCollationEquivalentLogin()
+    {
+        DbHelper::createAnonymousUser();
+
+        // "anonymoüs" is a distinct byte string from "anonymous", but the database matches logins
+        // case- and accent-insensitively, so it resolves to the reserved anonymous user. The
+        // anonymous restriction must still apply.
+        $collationEquivalentLogin = 'anonymoüs';
+
+        try {
+            $this->api->setUserAccess($collationEquivalentLogin, 'admin', [1]);
+            self::fail('Expected UsersManager_ExceptionAnonymousAccessNotPossible to be thrown');
+        } catch (\Exception $e) {
+            self::assertStringContainsString('UsersManager_ExceptionAnonymousAccessNotPossible', $e->getMessage());
+        }
+
+        // no access row must have been created for either representation of the anonymous login
+        $access = $this->model->getSitesAccessFromUser('anonymous');
+        self::assertSame([], $access);
+        $access = $this->model->getSitesAccessFromUser($collationEquivalentLogin);
+        self::assertSame([], $access);
+    }
+
     public function testSetUserAccessCannotSetViewToAnonymousWithoutPassword()
     {
         $this->expectException(\Exception::class);
-        $this->expectExceptionMessage('UsersManager_ConfirmWithPassword');
+        $this->expectExceptionMessage('UsersManager_ConfirmWithReAuthentication');
 
+        $_GET['token_auth'] = 'anyToken';
         $_GET['force_api_session'] = 1;
         try {
             $this->api->setUserAccess('anonymous', 'view', [1]);
         } finally {
+            unset($_GET['token_auth']);
             unset($_GET['force_api_session']);
+        }
+    }
+
+    public function testAddUserDoesNotRequirePasswordWhenPostSessionFlagIsZeroEvenIfGetFlagIsOne()
+    {
+        $_GET['force_api_session'] = 1;
+        $_POST['token_auth'] = 'postToken';
+        $_POST['force_api_session'] = 0;
+
+        try {
+            $this->api->addUser('collisionUser', 'password', 'collision@example.com');
+            self::assertTrue($this->model->userExists('collisionUser'));
+        } finally {
+            unset($_GET['force_api_session']);
+            unset($_POST['token_auth']);
+            unset($_POST['force_api_session']);
+        }
+    }
+
+    public function testAddUserRequiresPasswordWhenPostSessionFlagIsOneEvenIfGetFlagIsZero()
+    {
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('UsersManager_ConfirmWithReAuthentication');
+
+        $_GET['force_api_session'] = 0;
+        $_POST['token_auth'] = 'postToken';
+        $_POST['force_api_session'] = 1;
+
+        try {
+            $this->api->addUser('collisionUser2', 'password', 'collision2@example.com');
+        } finally {
+            unset($_GET['force_api_session']);
+            unset($_POST['token_auth']);
+            unset($_POST['force_api_session']);
         }
     }
 
@@ -1386,6 +1560,9 @@ class APITest extends IntegrationTestCase
             }
         );
 
+        $this->addUserWithAccess('test123', 'superuser', 1);
+        $this->setCurrentUser('test123', 'superuser', 1);
+
         $this->api->inviteUser('pendingLoginTest', 'pendingLoginTest@matomo.org', 1);
         $isPending = $this->model->isPendingUser('pendingLoginTest');
         self::assertTrue($isPending);
@@ -1475,6 +1652,34 @@ class APITest extends IntegrationTestCase
         self::assertEquals($expiredDays, $diff / 3600 / 24);
     }
 
+    public function testInviteUserFailsWhenExpiryInDaysIsTooHigh()
+    {
+        self::expectException(\Exception::class);
+        self::expectExceptionMessage('UsersManager_ExpiryInDays');
+
+        $this->api->inviteUser('pendingLoginTest', 'pendingLoginTest@matomo.org', 1, 99999);
+    }
+
+    public function testInviteUserFailsWhenExpiryInDaysIsNegative()
+    {
+        self::expectException(\Exception::class);
+        self::expectExceptionMessage('UsersManager_ExpiryInDays');
+
+        $this->api->inviteUser('pendingLoginTest', 'pendingLoginTest@matomo.org', 1, -5);
+    }
+
+    public function testInviteUserDoesNotCreateUserWhenExpiryInDaysIsTooHigh()
+    {
+        try {
+            $this->api->inviteUser('pendingLoginTest', 'pendingLoginTest@matomo.org', 1, 99999);
+            self::fail('Expected exception was not thrown');
+        } catch (\Exception $e) {
+            // expected, asserted in testInviteUserFailsWhenExpiryInDaysIsTooHigh()
+        }
+
+        self::assertFalse($this->model->isPendingUser('pendingLoginTest'));
+    }
+
     public function testResendInviteAsSuperUser()
     {
         $this->api->inviteUser('pendingLoginTest', 'pendingLoginTest@matomo.org', 1);
@@ -1501,6 +1706,26 @@ class APITest extends IntegrationTestCase
         self::expectExceptionMessage('UsersManager_ExceptionUserDoesNotExist');
 
         $this->api->resendInvite('notExistingUser');
+    }
+
+    public function testResendInviteFailsWhenExpiryInDaysIsTooHigh()
+    {
+        $this->api->inviteUser('pendingLoginTest', 'pendingLoginTest@matomo.org', 1);
+
+        self::expectException(\Exception::class);
+        self::expectExceptionMessage('UsersManager_ExpiryInDays');
+
+        $this->api->resendInvite('pendingLoginTest', 99999);
+    }
+
+    public function testGenerateInviteLinkFailsWhenExpiryInDaysIsTooHigh()
+    {
+        $this->api->inviteUser('pendingLoginTest', 'pendingLoginTest@matomo.org', 1);
+
+        self::expectException(\Exception::class);
+        self::expectExceptionMessage('UsersManager_ExpiryInDays');
+
+        $this->api->generateInviteLink('pendingLoginTest', 99999);
     }
 
     public function testResendInviteAsInviterWithAdminAccess()
@@ -1624,11 +1849,6 @@ class APITest extends IntegrationTestCase
             }
         }
         return $ids;
-    }
-
-    private function getPreferenceId($preferenceName)
-    {
-        return $this->login . '_' . $preferenceName;
     }
 
     public function provideContainerConfig()

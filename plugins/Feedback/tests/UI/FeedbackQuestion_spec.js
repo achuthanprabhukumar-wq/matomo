@@ -8,7 +8,6 @@
  */
 
 describe('FeedbackQuestion', function () {
-  this.timeout(0);
   this.fixture = 'Piwik\\Plugins\\Feedback\\tests\\Fixtures\\FeedbackQuestionBannerFixture';
 
   var url = '?module=CoreHome&action=index&idSite=1&period=day&date=2019-07-11&forceFeedbackTest=1';
@@ -31,7 +30,7 @@ describe('FeedbackQuestion', function () {
     await page.click('.bannerHeader .btn');
     await page.waitForNetworkIdle();
 
-    var popup = await page.waitForSelector('.modal', { visible: true });
+    var popup = await page.waitForSelector('.modal.open', { visible: true });
     expect(await popup.screenshot()).to.matchImage('feedback_popup');
   });
 

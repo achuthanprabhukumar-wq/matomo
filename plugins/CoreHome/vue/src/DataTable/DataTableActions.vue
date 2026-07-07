@@ -14,6 +14,7 @@
       href
       @click.prevent
       :data-target="`dropdownConfigure${randomIdForDropdown}`"
+      :title="translate('CoreHome_ReportConfigure')"
       style="margin-right:3.5px"
       v-if="hasConfigItems && (isAnyConfigureIconHighlighted || isTableView)"
     >
@@ -88,6 +89,7 @@
         apiMethod: apiMethodToRequestDataTable,
         reportFormats,
         maxFilterLimit,
+        canExportFlat: exportSupportsFlat,
       }"
       :title="translate('General_ExportThisReport')"
       href=""
@@ -232,6 +234,7 @@ import Passthrough from '../Passthrough/Passthrough.vue';
 import DropdownButton from '../DropdownButton/DropdownButton';
 import ReportExport from '../ReportExport/ReportExport';
 import { translate } from '../translate';
+import { isBooleanLikeSet, resolveExportSupportsFlat } from './DataTableActions.utils';
 
 interface FooterIcon {
   id: string;
@@ -269,10 +272,6 @@ function getToggledIconText(toggled: boolean, textToggled: string, textUntoggled
   return getSingleStateIconText(textUntoggled);
 }
 
-function isBooleanLikeSet(value: number|string|boolean) {
-  return !!value && value !== '0';
-}
-
 export default defineComponent({
   props: {
     showPeriods: Boolean,
@@ -280,6 +279,8 @@ export default defineComponent({
     showFooterIcons: Boolean,
     showSearch: Boolean,
     showFlattenTable: Boolean,
+    reportSupportsFlatten: Boolean,
+    exportSupportsFlatten: Boolean,
     footerIcons: {
       type: Array,
       required: true,
@@ -385,14 +386,20 @@ export default defineComponent({
     },
     reportFormats(): Record<string, string> {
       const formats: Record<string, string> = {
-        CSV: 'CSV',
         TSV: 'TSV (Excel)',
-        XML: 'XML',
-        JSON: 'Json',
         HTML: 'HTML',
+        JSON: 'JSON',
+        XML: 'XML',
+        CSV: 'CSV',
+        RSS: 'RSS',
       };
-      formats.RSS = 'RSS';
       return formats;
+    },
+    exportSupportsFlat() {
+      return resolveExportSupportsFlat(
+        !!this.exportSupportsFlatten,
+        this.clientSideParameters.flat as number|string|boolean,
+      );
     },
     showDimensionsConfigItem() {
       return this.showFlattenTable

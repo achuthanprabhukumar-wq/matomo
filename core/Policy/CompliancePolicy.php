@@ -1,12 +1,21 @@
 <?php
 
+/**
+ * Matomo - free/libre analytics platform
+ *
+ * @link    https://matomo.org
+ * @license https://www.gnu.org/licenses/gpl-3.0.html GPL v3 or later
+ */
+
 namespace Piwik\Policy;
 
-use Exception;
+use Piwik\Piwik;
 use Piwik\Plugin\Manager;
 use Piwik\Settings\FieldConfig;
+use Piwik\Settings\Interfaces\ConfigSettingInterface;
 use Piwik\Settings\Interfaces\MeasurableSettingInterface;
 use Piwik\Settings\Interfaces\SystemSettingInterface;
+use Piwik\Settings\Interfaces\Traits\Getters\ConfigGetterTrait;
 use Piwik\Settings\Interfaces\Traits\Setters\MeasurableSetterTrait;
 use Piwik\Settings\Interfaces\Traits\Setters\SystemSetterTrait;
 
@@ -14,7 +23,7 @@ use Piwik\Settings\Interfaces\Traits\Setters\SystemSetterTrait;
  * @implements SystemSettingInterface<bool>
  * @implements MeasurableSettingInterface<bool>
  */
-abstract class CompliancePolicy implements SystemSettingInterface, MeasurableSettingInterface
+abstract class CompliancePolicy implements SystemSettingInterface, MeasurableSettingInterface, ConfigSettingInterface
 {
     /**
      * @use SystemSetterTrait<bool>
@@ -26,14 +35,53 @@ abstract class CompliancePolicy implements SystemSettingInterface, MeasurableSet
      */
     use MeasurableSetterTrait;
 
+    /**
+     * @use ConfigGetterTrait<bool>
+     */
+    use ConfigGetterTrait;
+
     abstract public static function getName(): string;
-    abstract public static function getDescription(): string;
     abstract public static function getTitle(): string;
+    abstract protected static function generateDescription(): string;
+    abstract protected static function generateWarnings(): string;
+
+    public static function getDescription(): string
+    {
+        $description = static::generateDescription();
+
+        /**
+         * This event is triggered while the description of a compliance policy is
+         * being generated. The policy description can be modified via this event.
+         *
+         * @param string &$description of the policy.
+         */
+        Piwik::postEvent('CompliancePolicy.updatePolicyDescription', [&$description, static::class]);
+
+        $shouldShowWarnings = true;
+
+        /**
+         * This event is triggered while the description of a compliance policy is
+         * being generated, and controls whether any warnings specific to the policy
+         * are displayed at the end of the description.
+         *
+         * @param bool &$shouldShowWarnings set to false if the warnings should be hidden
+         */
+        Piwik::postEvent('CompliancePolicy.shouldShowWarnings', [&$shouldShowWarnings, static::class]);
+
+        if ($shouldShowWarnings) {
+            $warnings = static::generateWarnings();
+            if (!empty($warnings)) {
+                $description .= '<br/>' . static::generateWarnings();
+            }
+        }
+
+        return $description;
+    }
 
     /**
-     * @return array<string> of plugin names that are required for this policy to function
+     * @return array<array<string>> of [['title' => (string) 'TITLE', 'note' => (string) 'NOTE']]
      */
-    abstract protected static function getMinimumRequiredPlugins(): array;
+    abstract public static function getUnknownSettings(): array;
 
     /**
      * @return array<string, string>
@@ -45,21 +93,6 @@ abstract class CompliancePolicy implements SystemSettingInterface, MeasurableSet
             'title' => static::getTitle(),
             'description' => static::getDescription(),
         ];
-    }
-
-    /**
-     * @throws \Exception when required plugins are not active
-     */
-    protected static function checkRequiredPluginsActive(): void
-    {
-        $plugins = static::getMinimumRequiredPlugins();
-        $pluginManager = static::getPluginManagerInstance();
-
-        foreach ($plugins as $plugin) {
-            if (!$pluginManager->isPluginActivated($plugin)) {
-                throw new Exception("Plugin $plugin is not activated");
-            }
-        }
     }
 
     protected static function getPluginManagerInstance(): Manager
@@ -97,6 +130,15 @@ abstract class CompliancePolicy implements SystemSettingInterface, MeasurableSet
         return FieldConfig::TYPE_BOOL;
     }
 
+    protected static function getConfigSection(): string
+    {
+        return Piwik::getPluginNameOfMatomoClass(static::class);
+    }
+
+    protected static function getConfigSettingName(): string
+    {
+        return static::getSystemName();
+    }
     /**
      * If the policy is active at the instance level,
      * disabling the policy for a site will also disable it
@@ -109,9 +151,21 @@ abstract class CompliancePolicy implements SystemSettingInterface, MeasurableSet
             if (static::getSystemValue() && !$isActive) {
                 static::setSystemValue($isActive);
             }
-            return;
+        } else {
+            static::setSystemValue($isActive);
         }
-        static::setSystemValue($isActive);
+
+        /**
+         * This event is triggered when the status of a compliance policy changes, and
+         * is to be used to perform extra actions when a policy is activated/deactivated.
+         *
+         * The status of a policy cannot be changed via this event.
+         *
+         * @param bool $isActive Whether the policy is being activated or deactivated
+         * @param int|null $idSite
+         * @param class-string<CompliancePolicy> The compliance policy in question
+         */
+        Piwik::postEvent('CompliancePolicy.setActiveStatus', [$isActive, $idSite, static::class]);
     }
 
     /**
@@ -120,16 +174,15 @@ abstract class CompliancePolicy implements SystemSettingInterface, MeasurableSet
      */
     public static function isActive(?int $idSite): bool
     {
-        try {
-            self::checkRequiredPluginsActive();
-        } catch (Exception $e) {
-            return false;
-        }
-
         $instanceLevel = static::getSystemValue();
         if (!$instanceLevel && isset($idSite)) {
             return static::getMeasurableValue($idSite);
         }
         return $instanceLevel;
+    }
+
+    public static function isConfigControlled()
+    {
+        return !is_null(static::getConfigValue());
     }
 }

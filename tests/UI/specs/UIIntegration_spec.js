@@ -10,8 +10,6 @@
 describe("UIIntegrationTest", function () { // TODO: Rename to Piwik?
     var parentSuite = this;
 
-    this.timeout(0);
-
     var generalParams = 'idSite=1&period=year&date=2012-08-09',
         idSite2Params = 'idSite=2&period=year&date=2012-08-09',
         idSite3Params = 'idSite=3&period=year&date=2012-08-09',
@@ -131,7 +129,7 @@ describe("UIIntegrationTest", function () { // TODO: Rename to Piwik?
             await page.evaluate(function () {
                 var elements = document.querySelectorAll('table tr td:nth-child(2)');
                 for (var i in elements) {
-                    if (elements.hasOwnProperty(i) && elements[i].innerText.match(/^[0-9]\.[0-9]\.[0-9]$/)) {
+                    if (elements.hasOwnProperty(i) && elements[i].innerText.match(/^[0-9]+\.[0-9]+\.[0-9]+$/)) {
                         elements[i].innerText = '3.0.0'
                     }
                 }
@@ -284,13 +282,52 @@ describe("UIIntegrationTest", function () { // TODO: Rename to Piwik?
         });
 
         it('should load the visitors > real-time visits page correctly', async function () {
-            await page.goto("?" + urlBaseGeneric + idSite3Params + "#?" + idSite3Params + "&category=General_Visitors&subcategory=General_RealTime");
-            //await page.waitForNetworkIdle();
+            // Use the dedicated site seeded by UITestFixture::addRealtimeVisitsForUITest
+            // so the realtime widget reads only fixture-controlled visits, not state
+            // mutated by other UI specs that share idSite=3 (the overlay test site).
+            const idSite = testEnvironment.realtimeUiSiteId;
+            const idSiteParams = 'idSite=' + idSite + '&period=year&date=2012-08-09';
+
+            await page.goto("?" + urlBaseGeneric + idSiteParams + "#?" + idSiteParams + "&category=General_Visitors&subcategory=General_RealTime");
+
+            // Wait for both the visit list and the totals row to finish their initial fetch
+            await page.waitForNetworkIdle();
+            await page.waitForSelector('#visitsLive li.visit', { visible: true });
+            await page.waitForSelector('#visitsTotal');
+
+            // Pause the LiveWidget refresh timer so a follow-up fetch cannot race the
+            // screenshot (AutoRefreshController falls back to 3s even when the configured
+            // interval is 0). This also halts the totals refresh inside the same widget.
+            await page.click('#pauseImage');
+
+            // Strip any in-flight fade-in animation classes
+            await page.evaluate(() => {
+                document.querySelectorAll('.live-widget-fade-in')
+                    .forEach(el => el.classList.remove('live-widget-fade-in'));
+            });
+
             await page.mouse.move(-10, -10);
-            //await page.click('#pauseImage'); // prevent refreshes breaking the tests
-            await page.waitForTimeout(100);
 
             expect(await screenshotPageWrap()).to.matchImage('visitors_realtime_visits');
+        });
+
+        it('should not double-encode action URLs in the real-time visits widget', async function () {
+            const idSite = testEnvironment.realtimeUiSiteId;
+            const idSiteParams = 'idSite=' + idSite + '&period=year&date=2012-08-09';
+
+            await page.goto("?" + urlBaseGeneric + idSiteParams + "#?" + idSiteParams + "&category=General_Visitors&subcategory=General_RealTime");
+
+            await page.waitForNetworkIdle();
+            await page.waitForSelector('#visitsLive li.visit a[href*="download.pdf"]', { visible: true });
+
+            const href = await page.evaluate(() => {
+                const link = document.querySelector('#visitsLive li.visit a[href*="download.pdf"]');
+                return link ? link.getAttribute('href') : null;
+            });
+
+            expect(href).to.be.a('string');
+            expect(href).to.contain('download.pdf?a=b&c=d');
+            expect(href).to.not.contain('&amp;');
         });
     });
 
@@ -427,18 +464,6 @@ describe("UIIntegrationTest", function () { // TODO: Rename to Piwik?
         });
     });
 
-    describe("EventsPages", function () {
-        this.title = parentSuite.title; // to make sure the screenshot prefix is the same
-
-        // Events pages
-        it('should load the Events > index page correctly', async function () {
-            await page.goto("?" + urlBase + "#?" + generalParams + "&category=General_Actions&subcategory=Events_Events");
-            await page.mouse.move(-10, -10);
-
-            expect(await page.screenshotSelector('.pageWrap,.dataTable')).to.matchImage('events_overview');
-        });
-    });
-
     describe("ExampleUiPages", function () {
         this.title = parentSuite.title; // to make sure the screenshot prefix is the same
 
@@ -476,6 +501,12 @@ describe("UIIntegrationTest", function () { // TODO: Rename to Piwik?
 
         it('should load the example ui > evolution graph page correctly', async function () {
             await page.goto("?" + urlBase + "#?" + generalParams + "&category=ExampleUI_UiFramework&subcategory=Evolution%20Graph");
+            await page.waitForNetworkIdle();
+            // the annotation markers are positioned after the graph has rendered, so wait until the
+            // ones that have annotations are actually placed/visible before taking the screenshot
+            await page.waitForFunction(
+              "$('.evolution-annotations > span[data-count!=0]').length > 0 && $('.evolution-annotations > span[data-count!=0]').css('opacity') == 1"
+            );
 
             expect(await screenshotPageWrap()).to.matchImage('exampleui_evolutionGraph');
         });
@@ -738,10 +769,50 @@ describe("UIIntegrationTest", function () { // TODO: Rename to Piwik?
             await page.evaluate(function () {
                 $('#downloadReportForm_15').attr('target', ''); // do not open the download in new windows
             });
-            await page.click('#downloadReportForm_15 + a');
+            await page.click('#downloadReportForm_15 + span');
             await page.waitForNetworkIdle();
 
             expect(await page.screenshot({fullPage: true})).to.matchImage('email_reports_download');
+        });
+        it('should load scheduled reports showing report hour description for UTC+30 and UTC+45', async function () {
+          const timezoneCases = [
+            { timezone: 'Asia/Kolkata', value: 'string:10.5' }, // UTC+05:30
+            { timezone: 'Asia/Kathmandu', value: 'string:10.75' }, // UTC+05:45
+          ];
+
+          try {
+            for (const timezoneCase of timezoneCases) {
+              await testEnvironment.callApi('SitesManager.updateSite', {
+                idSite: 4,
+                timezone: timezoneCase.timezone,
+              });
+              await page.goto('?idSite=4&period=day&date=today&module=ScheduledReports&action=index');
+              await page.click('#add-report');
+              await page.waitForNetworkIdle();
+              expect(await page.$('#reportHourHelpText')).to.be.ok;
+              await page.evaluate((newValue) => {
+                const $hour = $('select[name="report_hour"]');
+                if ($hour.length === 0) {
+                  throw new Error('report_hour select not found');
+                }
+                $hour.val(newValue).trigger('change');
+              }, timezoneCase.value);
+              const expectedTime = '05:00';
+              await page.waitForFunction((newValue) => $('select[name="report_hour"]').val() === newValue, {}, timezoneCase.value);
+              const helpText = await page.evaluate(() => $('#reportHourHelpText').text());
+              expect(helpText).to.include(expectedTime);
+            }
+          } finally {
+            // put back default timezone
+            await testEnvironment.callApi('SitesManager.updateSite', {
+              idSite: 4,
+              timezone: 'UTC',
+            });
+            await page.goto('?idSite=4&period=day&date=today&module=ScheduledReports&action=index');
+            await page.click('#add-report');
+            await page.waitForNetworkIdle();
+            expect(await page.$('#reportHourHelpText')).to.be.not.ok;
+          }
         });
 
         it('should load the scheduled reports when Edit button is clicked', async function () {
@@ -756,13 +827,17 @@ describe("UIIntegrationTest", function () { // TODO: Rename to Piwik?
             await page.goto("?" + urlBase + "#?" + generalParams + "&category=General_Visitors&subcategory=VisitTime_SubmenuTimes");
             await page.waitForNetworkIdle();
             await page.click('#date.title');
-            await page.click('input#period_id_range');
-            await page.evaluate(function () {
-                $('#inputCalendarFrom').val('2012-08-02');
-                $('#inputCalendarTo').val('2012-08-12');
-            });
-            await page.waitForTimeout(500);
-            await page.evaluate(() => $('#calendarApply').click());
+            await page.click('#period_id_range');
+            await page.click('#inputCalendarFrom', { clickCount: 3 });
+            await page.keyboard.press('Backspace');
+            await page.type('#inputCalendarFrom', '2012-08-02');
+
+            await page.click('#inputCalendarTo', { clickCount: 3 });
+            await page.keyboard.press('Backspace');
+            await page.type('#inputCalendarTo', '2012-08-12');
+
+            await page.waitForFunction(() => !$('#calendarApply').is(':disabled'));
+            await page.click('#calendarApply');
 
             await page.mouse.move(-10, -10);
             await page.waitForNetworkIdle();

@@ -30,12 +30,17 @@ class Mysql implements SchemaInterface
 {
     public const OPTION_NAME_MATOMO_INSTALL_VERSION = 'install_version';
     public const MAX_TABLE_NAME_LENGTH = 64;
-
     private $tablesInstalled = null;
+    protected $minimumSupportedVersion = '5.5';
 
     public function getDatabaseType(): string
     {
         return 'MySQL';
+    }
+
+    public function getMinimumSupportedVersion(): string
+    {
+        return $this->minimumSupportedVersion;
     }
 
     /**
@@ -109,6 +114,7 @@ class Mysql implements SchemaInterface
             'site'    => "CREATE TABLE {$prefixTables}site (
                           idsite INTEGER(10) UNSIGNED NOT NULL AUTO_INCREMENT,
                           name VARCHAR(90) NOT NULL,
+                          description VARCHAR(255) NOT NULL DEFAULT '',
                           main_url VARCHAR(255) NOT NULL,
                             ts_created TIMESTAMP NULL,
                             ecommerce TINYINT DEFAULT 0,
@@ -323,9 +329,29 @@ class Mysql implements SchemaInterface
                                       date2 DATE NULL,
                                       period TINYINT UNSIGNED NULL,
                                       ts_archived DATETIME NULL,
-                                      value MEDIUMBLOB NULL,
+                                      value LONGBLOB NULL,
                                         PRIMARY KEY(idarchive, name),
                                         INDEX index_period_archived(period, ts_archived)
+                                      ) $tableOptions
+            ",
+
+            'archiving_metrics'     => "CREATE TABLE {$prefixTables}archiving_metrics (
+                                      metadataid BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                                      idarchive BIGINT UNSIGNED NOT NULL,
+                                      idsite INTEGER UNSIGNED NOT NULL,
+                                      archive_name VARCHAR(255) NOT NULL,
+                                      date1 DATE NOT NULL,
+                                      date2 DATE NOT NULL,
+                                      period TINYINT UNSIGNED NOT NULL,
+                                      ts_started DATETIME NOT NULL,
+                                      ts_finished DATETIME NOT NULL,
+                                      total_time BIGINT UNSIGNED NOT NULL,
+                                      total_time_exclusive BIGINT UNSIGNED NOT NULL,
+                                      is_temporary TINYINT(1) UNSIGNED NOT NULL DEFAULT 0,
+                                        PRIMARY KEY(metadataid),
+                                        INDEX index_idarchive(idarchive),
+                                        INDEX index_idsite_archive_name(idsite, archive_name),
+                                        INDEX index_idsite_date1_period(idsite, date1, period)
                                       ) $tableOptions
             ",
 
@@ -535,7 +561,7 @@ class Mysql implements SchemaInterface
     /**
      * Create database
      *
-     * @param string $dbName Name of the database to create
+     * @param string|null $dbName Name of the database to create
      */
     public function createDatabase($dbName = null)
     {
@@ -664,7 +690,6 @@ class Mysql implements SchemaInterface
      *
      * @param string $sql  query to add hint to
      * @param float $limit  time limit in seconds
-     * @return string
      */
     public function addMaxExecutionTimeHintToQuery(string $sql, float $limit): string
     {
@@ -689,9 +714,6 @@ class Mysql implements SchemaInterface
      * Will return an empty string for an unknown charset
      * (can happen for alias charsets like "utf8").
      *
-     * @param string $charset
-     *
-     * @return string
      * @throws Exception
      */
     public function getDefaultCollationForCharset(string $charset): string

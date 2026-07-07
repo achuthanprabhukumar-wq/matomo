@@ -16,6 +16,8 @@ use Piwik\Date;
  */
 class Mariadb extends Mysql
 {
+    protected $minimumSupportedVersion = '5.5';
+
     public function getDatabaseType(): string
     {
         return 'MariaDB';
@@ -26,7 +28,6 @@ class Mariadb extends Mysql
      *
      * @param string $sql  query to add hint to
      * @param float $limit  time limit in seconds
-     * @return string
      */
     public function addMaxExecutionTimeHintToQuery(string $sql, float $limit): string
     {

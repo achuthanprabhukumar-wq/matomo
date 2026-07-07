@@ -9,8 +9,6 @@
 
 describe("SitesManager", function () {
     const parentSuite = this;
-
-    this.timeout(0);
     this.fixture = "Piwik\\Plugins\\SitesManager\\tests\\Fixtures\\ManySites";
 
     const url = "?module=SitesManager&action=index&idSite=1&period=day&date=yesterday&showaddsite=false";
@@ -19,6 +17,7 @@ describe("SitesManager", function () {
     {
         await test();
         await page.waitForNetworkIdle();
+        await page.mouse.move(-10, -10);
         const pageWrap = await page.$('#content');
         await page.waitForFunction((s) => {
           return !!$(s).length;

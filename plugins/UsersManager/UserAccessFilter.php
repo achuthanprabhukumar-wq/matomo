@@ -37,7 +37,7 @@ class UserAccessFilter
     private $access;
 
     /**
-     * Holds a list of all idSites the current user has view access to. Only used for caching.
+     * Holds a list of all idSites the current user has admin access to. Only used for caching.
      * @var array
      */
     private $idSitesWithAdmin;
@@ -116,7 +116,7 @@ class UserAccessFilter
     /**
      * Returns the given user only if the current user has permission to see the given user
      * @param array $user An array containing a key 'login'
-     * @return array|null
+     * @return array
      */
     public function filterUser($user)
     {
@@ -126,6 +126,8 @@ class UserAccessFilter
         ) {
             return $user;
         }
+
+        return [];
     }
 
     /**

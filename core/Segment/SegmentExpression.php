@@ -11,9 +11,6 @@ namespace Piwik\Segment;
 
 use Exception;
 
-/**
- *
- */
 class SegmentExpression
 {
     public const AND_DELIMITER = ';';
@@ -461,7 +458,7 @@ class SegmentExpression
      *
      * [
      * 0 => [0 => 'A', 1 => 'B'],            // First AND group containing A and B OR conditions
-     * 1 => [0 => 'C', 1 => 'D', 2 => 'E',   // Second AND group containing C, D & E
+     * 1 => [0 => 'C', 1 => 'D', 2 => 'E'],  // Second AND group containing C, D & E
      * 2 => [0 => 'F']                       // Third AND group containing just F
      * ]
      *

@@ -14,9 +14,12 @@ use Piwik\Access\Role\Admin;
 use Piwik\Access\Role\Write;
 use Piwik\API\Request;
 use Piwik\Config;
+use Piwik\Container\StaticContainer;
 use Piwik\Option;
 use Piwik\Piwik;
 use Piwik\Plugins\CoreHome\SystemSummary;
+use Piwik\Plugins\SitesManager\API as SitesManagerAPI;
+use Piwik\Settings\Storage\UserScopedSettingsAccessManager;
 use Piwik\SettingsPiwik;
 
 /**
@@ -124,7 +127,43 @@ class UsersManager extends \Piwik\Plugin
      */
     public function deleteSite($idSite)
     {
+        // TODO: remove in Matomo 6 - users should be using new userScopedSettings
         Option::deleteLike('%\_' . API::PREFERENCE_DEFAULT_REPORT, $idSite);
+
+        $preferencesStore = StaticContainer::get(UserScopedSettingsAccessManager::class);
+        $usersPreferences = $preferencesStore->getValuesForAllUsers('UsersManager', [API::PREFERENCE_DEFAULT_REPORT]);
+
+        foreach ($usersPreferences as $login => $preferences) {
+            if (empty($preferences[API::PREFERENCE_DEFAULT_REPORT])) {
+                continue;
+            }
+
+            if ((string) $preferences[API::PREFERENCE_DEFAULT_REPORT] !== (string) $idSite) {
+                continue;
+            }
+
+            $fallbackSiteId = $this->getFallbackDefaultReportForLogin($login);
+            if ($fallbackSiteId === false) {
+                $preferencesStore->delete('UsersManager', $login, API::PREFERENCE_DEFAULT_REPORT);
+                continue;
+            }
+
+            $preferencesStore->set('UsersManager', $login, API::PREFERENCE_DEFAULT_REPORT, $fallbackSiteId);
+        }
+    }
+
+    /**
+     * @return false|int
+     */
+    private function getFallbackDefaultReportForLogin(string $login)
+    {
+        if (Piwik::hasTheUserSuperUserAccess($login)) {
+            $siteIds = SitesManagerAPI::getInstance()->getAllSitesId();
+        } else {
+            $siteIds = array_column((new Model())->getSitesAccessFromUser($login), 'site');
+        }
+
+        return reset($siteIds) ?: false;
     }
 
     /**
@@ -143,9 +182,11 @@ class UsersManager extends \Piwik\Plugin
     }
 
     /**
-     * Returns true if the password is complex enough (at least 6 characters and max 26 characters)
+     * Returns true if the password string is considered valid. When the credentials sanity check is
+     * disabled, any non-empty password is accepted; otherwise the password must be at least
+     * PASSWORD_MIN_LENGTH characters.
      *
-     * @param $input string
+     * @param string $input
      * @return bool
      */
     public static function isValidPasswordString($input)
@@ -309,6 +350,7 @@ class UsersManager extends \Piwik\Plugin
         $translationKeys[] = 'UsersManager_ConfirmThisChange';
         $translationKeys[] = 'UsersManager_ConfirmTokenCopied';
         $translationKeys[] = 'UsersManager_ConfirmWithPassword';
+        $translationKeys[] = 'UsersManager_ConfirmWithReAuthentication';
         $translationKeys[] = 'UsersManager_CopyDenied';
         $translationKeys[] = 'UsersManager_CopyDeniedHints';
         $translationKeys[] = 'UsersManager_CopyLink';
@@ -419,6 +461,10 @@ class UsersManager extends \Piwik\Plugin
         $translationKeys[] = 'UsersManager_SuperUsersPermissionsNotice';
         $translationKeys[] = 'UsersManager_TheDisplayedUsersAreSelected';
         $translationKeys[] = 'UsersManager_TheDisplayedWebsitesAreSelected';
+        $translationKeys[] = 'UsersManager_ThemeModeHelp1';
+        $translationKeys[] = 'UsersManager_ThemeModeHelp2';
+        $translationKeys[] = 'UsersManager_ThemeModeHelp3';
+        $translationKeys[] = 'UsersManager_ThemeModeMatchBrowser';
         $translationKeys[] = 'UsersManager_TokenAuthIntro';
         $translationKeys[] = 'UsersManager_TokenSuccessfullyGenerated';
         $translationKeys[] = 'UsersManager_TwoFactorAuthentication';
@@ -442,5 +488,8 @@ class UsersManager extends \Piwik\Plugin
         $translationKeys[] = 'UsersManager_InvalidTokenExpireDateFormat';
         $translationKeys[] = 'UsersManager_XAgo';
         $translationKeys[] = 'UsersManager_CannotRevokeOwnSuperuserAccess';
+        $translationKeys[] = 'UsersManager_SignOutUser';
+        $translationKeys[] = 'UsersManager_SignOutUserConfirm';
+        $translationKeys[] = 'UsersManager_SignOutUserSuccess';
     }
 }

@@ -29,17 +29,17 @@ class Updater extends \Piwik\Updates
     private static $cacheId = 'AllDimensionModifyTime';
 
     /**
-     * @var VisitDimension[]
+     * @var VisitDimension[]|null
      */
     public $visitDimensions;
 
     /**
-     * @var ActionDimension[]
+     * @var ActionDimension[]|null
      */
     private $actionDimensions;
 
     /**
-     * @var ConversionDimension[]
+     * @var ConversionDimension[]|null
      */
     private $conversionDimensions;
 
@@ -56,7 +56,6 @@ class Updater extends \Piwik\Updates
     }
 
     /**
-     * @param PiwikUpdater $updater
      * @return Migration[]
      * @api
      */
@@ -66,7 +65,6 @@ class Updater extends \Piwik\Updates
     }
 
     /**
-     * @param PiwikUpdater $updater
      * @return Migration\Db[]
      */
     public function getMigrationQueries(PiwikUpdater $updater)
@@ -162,6 +160,7 @@ class Updater extends \Piwik\Updates
     /**
      * @param ActionDimension|ConversionDimension|VisitDimension $dimension
      * @param string $componentPrefix
+     * @param array $existingColumnsInDb
      * @return array
      */
     private function getUpdatesForDimension(PiwikUpdater $updater, $dimension, $componentPrefix, $existingColumnsInDb)
@@ -231,7 +230,6 @@ class Updater extends \Piwik\Updates
     }
 
     /**
-     * @param PiwikUpdater $updater
      * @param Dimension $dimension
      * @param string $componentPrefix
      * @param array $columns

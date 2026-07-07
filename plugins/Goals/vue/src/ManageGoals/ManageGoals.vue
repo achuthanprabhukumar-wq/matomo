@@ -32,8 +32,12 @@
               <tr>
                 <th class="first">{{ translate('General_Id') }}</th>
                 <th>{{ translate('Goals_GoalName') }}</th>
-                <th>{{ translate('General_Description') }}</th>
-                <th>{{ translate('Goals_GoalIsTriggeredWhen') }}</th>
+                <th class="manageGoals-descriptionColumn">
+                  {{ translate('General_Description') }}
+                </th>
+                <th class="manageGoals-triggerColumn">
+                  {{ translate('Goals_GoalIsTriggeredWhen') }}
+                </th>
                 <th>{{ translate('General_ColumnRevenue') }}</th>
 
                 <component
@@ -41,7 +45,9 @@
                   :is="beforeGoalListActionsHeadComponent"
                 ></component>
 
-                <th v-if="userCanEditGoals">{{ translate('General_Actions') }}</th>
+                <th v-if="userCanEditGoals" class="manageGoals-actionsColumn">
+                  {{ translate('General_Actions') }}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -55,8 +61,8 @@
               <tr v-for="goal in goals || []" :id="goal.idgoal" :key="goal.idgoal">
                 <td class="first">{{ goal.idgoal }}</td>
                 <td>{{ goal.name }}</td>
-                <td>{{ goal.description }}</td>
-                <td>
+                <td class="manageGoals-descriptionColumn">{{ goal.description }}</td>
+                <td class="manageGoals-triggerColumn">
                   <span class='matchAttribute'>
                     {{ goalMatchAttributeTranslations[goal.match_attribute]
                       || goal.match_attribute }}
@@ -83,15 +89,22 @@
                   :is="beforeGoalListActionsBodyComponent[goal.idgoal]"
                 ></component>
 
-                <td v-if="userCanEditGoals" style="padding-top:2px">
+                <td
+                  v-if="userCanEditGoals"
+                  class="entityTable_ActionCell entityTable_ActionCell-3 manageGoals-actionsColumn"
+                >
+                  <a
+                    class="table-action icon-show"
+                    :href="getGoalReportUrl(goal.idgoal)"
+                    :title="translate('Goals_ViewGoalReport')"
+                    :aria-label="translate('Goals_ViewGoalReport')"
+                  ></a>
                   <button
-                    v-if="userCanEditGoals"
                     @click="editGoal(goal.idgoal)"
                     class="table-action icon-edit"
                     :title="translate('General_Edit')"
                   ></button>
                   <button
-                    v-if="userCanEditGoals"
                     @click="deleteGoal(goal.idgoal)"
                     class="table-action icon-delete"
                     :title="translate('General_Delete')"
@@ -133,18 +146,25 @@
                 name="goal_name"
                 v-model="goal.name"
                 :maxlength="50"
+                autocomplete="off"
                 :title="translate('Goals_GoalName')"
+                :placeholder="translate('Goals_GoalNamePlaceholder')"
+                :inline-help="translate('Goals_GoalNameHelpText')"
                 @change="goalNameChanged">
               </Field>
             </div>
 
             <div>
               <Field
-                uicontrol="text"
+                uicontrol="textarea"
                 name="goal_description"
                 v-model="goal.description"
                 :maxlength="255"
-                :title="translate('General_Description')"
+                autocomplete="off"
+                :title="`${translate('General_Description')} ${translate('Goals_Optional')}`"
+                :placeholder="translate('Goals_GoalDescriptionPlaceholder')"
+                :inline-help="translate('Goals_GoalDescriptionHelpText')"
+                :ui-control-attributes="{ class: 'compact-textarea' }"
               />
             </div>
 
@@ -247,6 +267,7 @@
                     uicontrol="text" name="pattern"
                     v-model="goal.pattern"
                     :maxlength="255"
+                    autocomplete="off"
                     :title="patternFieldLabel"
                     :full-width="true"
                   />
@@ -391,6 +412,7 @@ import {
   ReportingMenuStore,
   VueEntryContainer,
   externalLink,
+  NotificationsStore,
 } from 'CoreHome';
 import {
   Form,
@@ -400,6 +422,7 @@ import {
 import Goal from '../Goal';
 import ManageGoalsStore from './ManageGoals.store';
 
+const notificationKey = 'Goals.ManageGoals.Notification';
 interface ManageGoalsState {
   showEditGoal: boolean;
   showGoalList: boolean;
@@ -479,6 +502,10 @@ export default defineComponent({
       this.editGoal(this.showGoal);
     } else {
       this.showListOfReports();
+    }
+    const storedNotifications = this.getStoredNotification();
+    if (storedNotifications) {
+      this.showNotificationMessage(storedNotifications.goal, storedNotifications.create);
     }
   },
   methods: {
@@ -653,26 +680,76 @@ export default defineComponent({
 
       this.isLoading = true;
 
-      AjaxHelper.fetch(parameters, options).then(() => {
+      AjaxHelper.fetch(parameters, options).then(async (response) => {
+        let idToUse = parameters.idGoal;
+        if (isCreate && response.value) {
+          idToUse = response.value;
+        }
+        this.storeNotification(idToUse, isCreate);
+        this.scrollToTop();
         const subcategory = MatomoUrl.parsed.value.subcategory as string;
         if (subcategory === 'Goals_AddNewGoal'
           && Matomo.helper.isReportingPage()
         ) {
           // when adding a goal for the first time we need to load manage goals page afterwards
-          ReportingMenuStore.reloadMenuItems().then(() => {
-            MatomoUrl.updateHash({
-              ...MatomoUrl.hashParsed.value,
-              subcategory: 'Goals_ManageGoals',
-            });
-
-            this.isLoading = false;
+          await ReportingMenuStore.reloadMenuItems();
+          MatomoUrl.updateHash({
+            ...MatomoUrl.hashParsed.value,
+            subcategory: 'Goals_ManageGoals',
           });
+          this.isLoading = false;
         } else {
           window.location.reload();
         }
       }).catch(() => {
         this.scrollToTop();
         this.isLoading = false;
+      });
+    },
+    storeNotification(goalId:string|number, isCreate:boolean) {
+      try {
+        sessionStorage.setItem(notificationKey, JSON.stringify({ goal: goalId, create: isCreate }));
+      } catch (e) {
+        // Do nothing
+      }
+    },
+    getStoredNotification() {
+      const pendingNotification = sessionStorage.getItem(notificationKey);
+      if (pendingNotification) {
+        sessionStorage.removeItem(notificationKey);
+        try {
+          let { goal, create } = JSON.parse(pendingNotification);
+          if (goal) {
+            goal = parseInt(goal, 10); // we make sure this is an int
+          }
+          create = !!create; // we make sure this is a boolean
+          return { goal, create };
+        } catch (e) {
+          return null;
+        }
+      }
+      return null;
+    },
+    getGoalReportUrl(goalId:string|number) {
+      const link = MatomoUrl.stringify({
+        ...MatomoUrl.urlParsed.value,
+        module: 'CoreHome',
+        action: 'index',
+      });
+      const hash = MatomoUrl.stringify({
+        ...MatomoUrl.hashParsed.value,
+        category: 'Goals_Goals',
+        subcategory: goalId,
+      });
+      return `?${link}#?${hash}`;
+    },
+    showNotificationMessage(goalId:string|number, isCreate:boolean) {
+      let successMessage = translate(isCreate ? 'Goals_GoalCreated' : 'Goals_GoalUpdated');
+      const reportLink = `<a href="${this.getGoalReportUrl(goalId)}">[${translate('Goals_ViewGoalReport')}]</a>`;
+      successMessage = `${successMessage} ${reportLink}`;
+
+      NotificationsStore.show({
+        id: 'ManageGoals.create', message: successMessage, context: 'success', type: 'toast',
       });
     },
     changedTriggerType() {

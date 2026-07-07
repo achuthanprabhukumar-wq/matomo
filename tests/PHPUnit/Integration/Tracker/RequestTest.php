@@ -14,6 +14,8 @@ use Piwik\Config;
 use Piwik\Piwik;
 use Piwik\Plugins\UsersManager\Model;
 use Piwik\Plugins\UsersManager\UsersManager;
+use Piwik\Policy\CnilPolicy;
+use Piwik\Policy\PolicyManager;
 use Piwik\Tests\Framework\Fixture;
 use Piwik\Tracker\Cache;
 use Piwik\Tracker\Request;
@@ -522,6 +524,22 @@ class RequestTest extends IntegrationTestCase
         });
 
         $this->buildRequest(array('idsite' => '14'))->getIdSite();
+    }
+
+    public function testGetForcedUserIdShouldReturnUserIdWhenCnilPolicyDisabled()
+    {
+        PolicyManager::setPolicyActiveStatus(CnilPolicy::class, false);
+
+        $request = $this->buildRequest(['uid' => 'mytest', 'idsite' => '1']);
+        $this->assertEquals('mytest', $request->getForcedUserId());
+    }
+
+    public function testGetForcedUserIdShouldReturnFalseWhenCnilPolicyEnabled()
+    {
+        PolicyManager::setPolicyActiveStatus(CnilPolicy::class, true);
+
+        $request = $this->buildRequest(['uid' => 'mytest', 'idsite' => '1']);
+        $this->assertFalse($request->getForcedUserId());
     }
 
     private function buildRequest($params)

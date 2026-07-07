@@ -13,6 +13,7 @@ use Piwik\Common;
 use Piwik\Exception\UnexpectedWebsiteFoundException;
 use Piwik\Piwik;
 use Piwik\Plugin\Dimension\VisitDimension;
+use Piwik\Plugins\PrivacyManager\Settings\CampaignParameterValuesMasked;
 use Piwik\Plugins\Referrers\AIAssistant as AIAssistantDetection;
 use Piwik\Plugins\Referrers\SearchEngine as SearchEngineDetection;
 use Piwik\Plugins\Referrers\Social as SocialNetworkDetection;
@@ -170,6 +171,14 @@ abstract class Base extends VisitDimension
 
         if (!empty($referrerInformation['referer_keyword'])) {
             $referrerInformation['referer_keyword'] = $this->truncateReferrerKeyword($referrerInformation['referer_keyword']);
+        }
+
+        if (
+            $referrerInformation['referer_type'] == Common::REFERRER_TYPE_CAMPAIGN
+            && CampaignParameterValuesMasked::isEnabled((int) $this->idsite)
+        ) {
+            $referrerInformation['referer_name'] = CampaignParameterValuesMasked::getPlaceholderValue();
+            $referrerInformation['referer_keyword'] = CampaignParameterValuesMasked::getPlaceholderValue();
         }
 
         return $referrerInformation;
@@ -381,7 +390,6 @@ abstract class Base extends VisitDimension
 
     /**
      * AI detection
-     * @return bool
      */
     protected function detectReferrerAIAssistant(): bool
     {
@@ -402,26 +410,26 @@ abstract class Base extends VisitDimension
         } else {
             if (AIAssistantDetection::getInstance()->isAIAssistantUrl($this->referrerUrl)) {
                 $aiAssistantName = AIAssistantDetection::getInstance()->getAIAssistantFromDomain($this->referrerUrl);
+
+                /**
+                 * Triggered when detecting the AI of a referrer URL.
+                 *
+                 * Plugins can use this event to provide custom AI detection logic.
+                 *
+                 * @param string|false &$aiAssistantName Name of the AI Assistant, or false if none detected
+                 *
+                 *                                        This parameter is initialized to the results
+                 *                                        of Matomo's default AI detection
+                 *                                        logic.
+                 * @param string referrerUrl The referrer URL from the tracking request.
+                 */
+                Piwik::postEvent('Tracker.detectReferrerAIAssistant', [&$aiAssistantName, $this->referrerUrl]);
+
+                $cachedReferrerAIAssistants[$this->referrerUrl] = $aiAssistantName;
+                $cache->save($cacheKey, $cachedReferrerAIAssistants);
             } elseif ($utmSource && AIAssistantDetection::getInstance()->isAIAssistantUrl($utmSource)) {
                 $aiAssistantName = AIAssistantDetection::getInstance()->getAIAssistantFromDomain($utmSource);
             }
-
-            /**
-             * Triggered when detecting the AI of a referrer URL.
-             *
-             * Plugins can use this event to provide custom AI detection logic.
-             *
-             * @param string|false &$aiAssistantName Name of the AI Assistant, or false if none detected
-             *
-             *                                        This parameter is initialized to the results
-             *                                        of Matomo's default AI detection
-             *                                        logic.
-             * @param string referrerUrl The referrer URL from the tracking request.
-             */
-            Piwik::postEvent('Tracker.detectReferrerAIAssistant', [&$aiAssistantName, $this->referrerUrl]);
-
-            $cachedReferrerAIAssistants[$this->referrerUrl] = $aiAssistantName;
-            $cache->save($cacheKey, $cachedReferrerAIAssistants);
         }
 
         if ($aiAssistantName === false) {
@@ -503,9 +511,6 @@ abstract class Base extends VisitDimension
     /**
      * Check if campaign parameters were directly provided in tracking request.
      * This might e.g. be the case when using image tracking
-     *
-     * @param Request $request
-     * @return void
      */
     protected function detectReferrerCampaignFromTrackerParams(Request $request): void
     {
@@ -520,7 +525,7 @@ abstract class Base extends VisitDimension
             }
         }
 
-        if (empty($campaignName)) {
+        if (empty($campaignName) || !is_string($campaignName)) {
             return;
         }
 
@@ -631,9 +636,6 @@ abstract class Base extends VisitDimension
         }
     }
 
-    /**
-     * @return string
-     */
     protected function getParameterValueFromReferrerUrl($adsenseReferrerParameter): string
     {
         return trim(urldecode(UrlHelper::getParameterFromQueryString($this->referrerUrlParse['query'], $adsenseReferrerParameter) ?? ''));
@@ -683,8 +685,6 @@ abstract class Base extends VisitDimension
     }
 
     /**
-     * @param Request $request
-     * @param Visitor $visitor
      * @return mixed
      */
     public function getValueForRecordGoal(Request $request, Visitor $visitor)
@@ -740,6 +740,14 @@ abstract class Base extends VisitDimension
             }
         } else {
             Common::printDebug("No referrer attribution found for this user. Current user's visit referrer is used.");
+        }
+
+        if (
+            $type === Common::REFERRER_TYPE_CAMPAIGN
+            && CampaignParameterValuesMasked::isEnabled((int) $request->getIdSite())
+        ) {
+            $name = CampaignParameterValuesMasked::getPlaceholderValue();
+            $keyword = CampaignParameterValuesMasked::getPlaceholderValue();
         }
 
         $this->setCampaignValuesToLowercase($type, $name, $keyword);

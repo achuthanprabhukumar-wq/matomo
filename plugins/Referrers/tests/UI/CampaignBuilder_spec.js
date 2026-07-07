@@ -8,8 +8,6 @@
  */
 
 describe("CampaignBuilder", function () {
-    this.timeout(0);
-
     var url = '?module=Widgetize&action=iframe&widget=1&moduleToWidgetize=Referrers&actionToWidgetize=getCampaignUrlBuilder&idSite=1&period=day&date=yesterday&disableLink=1&widget=1';
 
     before(function () {
@@ -63,5 +61,31 @@ describe("CampaignBuilder", function () {
             await page.type('#campaignkeyword', 'MyAwesome&#2<&§Keyword');
             await generateUrl();
         });
+    });
+
+    // Runs last: it navigates to the standalone reporting page, so it must not interrupt
+    // the widgetized-iframe screenshot flow above which shares page state across tests.
+    it('should render the standalone page wrapped in a content block', async function () {
+        var pageUrl = '?module=CoreHome&action=index&idSite=1&period=day&date=yesterday'
+            + '#?idSite=1&period=day&date=yesterday'
+            + '&category=Referrers_Referrers&subcategory=Referrers_URLCampaignBuilder';
+
+        await page.goto(pageUrl);
+        await page.waitForSelector('.campaignUrlBuilder', { visible: true });
+
+        // On the standalone (non-widgetized) page the widget must be rendered inside a
+        // ContentBlock card (the white box), titled with the widget name.
+        var card = await page.evaluate(function () {
+            var widget = document.querySelector('.campaignUrlBuilder');
+            var cardEl = widget && widget.closest('.card');
+            var titleEl = cardEl && cardEl.querySelector('.card-title');
+            return {
+                wrappedInCard: !!cardEl,
+                title: titleEl ? titleEl.textContent.trim() : null,
+            };
+        });
+
+        expect(card.wrappedInCard).to.equal(true);
+        expect(card.title).to.equal('Campaign URL Builder');
     });
 });

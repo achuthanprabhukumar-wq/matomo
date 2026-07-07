@@ -11,6 +11,7 @@ namespace Piwik;
 
 use Composer\CaBundle\CaBundle;
 use Exception;
+use Piwik\Config\GeneralConfig;
 use Piwik\Container\StaticContainer;
 
 /**
@@ -43,11 +44,17 @@ class Http
         return $method;
     }
 
+    /**
+     * @return bool
+     */
     protected static function isSocketEnabled()
     {
         return function_exists('fsockopen');
     }
 
+    /**
+     * @return bool
+     */
     protected static function isCurlEnabled()
     {
         return function_exists('curl_init') && function_exists('curl_exec');
@@ -72,18 +79,19 @@ class Http
      * @param bool $checkHostIsAllowed whether we should check if the target host is allowed or not. This should only
      *                                 be set to false when using a hardcoded URL.
      *
+     * @return string|array|bool  If `$destinationPath` is not specified the HTTP response is returned on success. `false`
+     *                            is returned on failure.
+     *                            If `$getExtendedInfo` is `true` and `$destinationPath` is not specified an array with
+     *                            the following information is returned on success:
+     *
+     *                            - **status**: the HTTP status code
+     *                            - **headers**: the HTTP headers
+     *                            - **data**: the HTTP response data
+     *
+     *                            `false` is still returned on failure.
      * @throws Exception if the response cannot be saved to `$destinationPath`, if the HTTP response cannot be sent,
      *                   if there are more than 5 redirects or if the request times out.
-     * @return bool|string If `$destinationPath` is not specified the HTTP response is returned on success. `false`
-     *                     is returned on failure.
-     *                     If `$getExtendedInfo` is `true` and `$destinationPath` is not specified an array with
-     *                     the following information is returned on success:
-     *
-     *                     - **status**: the HTTP status code
-     *                     - **headers**: the HTTP headers
-     *                     - **data**: the HTTP response data
-     *
-     *                     `false` is still returned on failure.
+     * @phpstan-return ($destinationPath is null ? ($getExtendedInfo is true ? array{status: ?int, headers?: ?array, data?: ?string} : string|false) : bool)
      * @api
      */
     public static function sendHttpRequest(
@@ -111,7 +119,7 @@ class Http
             $userAgent,
             $destinationPath,
             $file,
-            $followDepth,
+            $followDepth ?? 0,
             $acceptLanguage,
             $acceptInvalidSslCertificate = false,
             $byteRange,
@@ -126,6 +134,11 @@ class Http
         );
     }
 
+    /**
+     * @param string|null $destinationPath
+     * @return resource|null
+     * @throws Exception
+     */
     public static function ensureDestinationDirectoryExists($destinationPath)
     {
         if ($destinationPath) {
@@ -140,7 +153,7 @@ class Http
         return null;
     }
 
-    private static function convertWildcardToPattern($wildcardHost)
+    private static function convertWildcardToPattern(string $wildcardHost): string
     {
         $flexibleStart = $flexibleEnd = false;
         if (strpos($wildcardHost, '*.') === 0) {
@@ -167,28 +180,29 @@ class Http
     /**
      * Sends an HTTP request using the specified transport method.
      *
-     * @param string $method
+     * @param string|null $method
      * @param string $aUrl
      * @param int $timeout in seconds
-     * @param string $userAgent
-     * @param string $destinationPath
-     * @param resource $file
+     * @param string|null $userAgent
+     * @param string|null $destinationPath
+     * @param resource|null $file
      * @param int $followDepth
-     * @param bool|string $acceptLanguage Accept-language header
+     * @param string|false $acceptLanguage Accept-language header
      * @param bool $acceptInvalidSslCertificate Only used with $method == 'curl'. If set to true (NOT recommended!) the SSL certificate will not be checked
-     * @param array|bool $byteRange For Range: header. Should be two element array of bytes, eg, array(0, 1024)
+     * @param array|false $byteRange For Range: header. Should be two element array of bytes, eg, array(0, 1024)
      *                                                  Doesn't work w/ fopen method.
      * @param bool $getExtendedInfo True to return status code, headers & response, false if just response.
      * @param string $httpMethod The HTTP method to use. Defaults to `'GET'`.
-     * @param string $httpUsername HTTP Auth username
-     * @param string $httpPassword HTTP Auth password
-     * @param array|string $requestBody If $httpMethod is 'POST' this may accept an array of variables or a string that needs to be posted
+     * @param string|null $httpUsername HTTP Auth username
+     * @param string|null $httpPassword HTTP Auth password
+     * @param array|string|null $requestBody If $httpMethod is 'POST' this may accept an array of variables or a string that needs to be posted
      * @param array $additionalHeaders List of additional headers to set for the request
+     * @param bool|null $forcePost If true, forces POST redirects to remain POST requests (curl only).
      * @param bool $checkHostIsAllowed whether we should check if the target host is allowed or not. This should only
      *                                 be set to false when using a hardcoded URL.
      *
-     * @return string|array  true (or string/array) on success; false on HTTP response error code (1xx or 4xx)
-     *@throws Exception
+     * @return ($destinationPath is null ? ($getExtendedInfo is true ? array{status: ?int, headers?: ?array, data?: ?string} : string|false) : bool)
+     * @throws Exception
      */
     public static function sendHttpRequestBy(
         $method,
@@ -222,7 +236,7 @@ class Http
             throw new Exception('Missing scheme in given url');
         }
 
-        $allowedProtocols = Config::getInstance()->General['allowed_outgoing_protocols'];
+        $allowedProtocols = GeneralConfig::getConfigValue('allowed_outgoing_protocols');
         $isAllowed = false;
 
         foreach (explode(',', $allowedProtocols) as $protocol) {
@@ -294,9 +308,11 @@ class Http
 
         [$proxyHost, $proxyPort, $proxyUser, $proxyPassword] = self::getProxyConfiguration($aUrl);
 
-        // other result data
+        /** @var int|null $status */
         $status  = null;
+        /** @var array<string, string> $headers */
         $headers = array();
+        /** @var string|null $response */
         $response = null;
 
         $httpAuthIsUsed = !empty($httpUsername) || !empty($httpPassword);
@@ -332,7 +348,7 @@ class Http
          *                      - 'verifySsl' A boolean whether SSL certificate should be verified
          *                      - 'destinationPath' If set, the response of the HTTP request should be saved to this file
          * @param string &$response A plugin listening to this event should assign the HTTP response it received to this variable, for example "{value: true}"
-         * @param string &$status A plugin listening to this event should assign the HTTP status code it received to this variable, for example "200"
+         * @param int &$status A plugin listening to this event should assign the HTTP status code it received to this variable, for example "200"
          * @param array &$headers A plugin listening to this event should assign the HTTP headers it received to this variable, eg array('Content-Length' => '5')
          */
         Piwik::postEvent('Http.sendHttpRequest', array($aUrl, $httpEventParams, &$response, &$status, &$headers));
@@ -577,7 +593,7 @@ class Http
             // we create a stream_context (works in php >= 5.2.1)
             // we also set the socket_timeout (for php < 5.2.1)
             $default_socket_timeout = @ini_get('default_socket_timeout');
-            @ini_set('default_socket_timeout', $timeout);
+            @ini_set('default_socket_timeout', (string)$timeout);
 
             $ctx = null;
             if (function_exists('stream_context_create')) {
@@ -624,8 +640,16 @@ class Http
                     fwrite($file, $response);
                 }
                 fclose($handle);
+
+                if (function_exists('http_get_last_response_headers')) {
+                    $http_response_header = http_get_last_response_headers();
+                }
             } else {
-                $response = @file_get_contents($aUrl, 0, $ctx);
+                $response = @file_get_contents($aUrl, false, $ctx);
+
+                if (function_exists('http_get_last_response_headers')) {
+                    $http_response_header = http_get_last_response_headers();
+                }
 
                 // try to get http status code from response headers
                 if (!empty($http_response_header) && preg_match('~^HTTP/(\d\.\d)\s+(\d+)(\s*.*)?~', implode("\n", $http_response_header), $m)) {
@@ -698,7 +722,7 @@ class Http
                 @curl_setopt($ch, CURLOPT_NOBODY, true);
             }
 
-            if (strtolower($httpMethod) === 'post' && !empty($requestBodyQuery)) {
+            if (in_array(strtolower($httpMethod), ['post', 'put']) && !empty($requestBodyQuery)) {
                 curl_setopt($ch, CURLOPT_POST, 1);
                 curl_setopt($ch, CURLOPT_POSTFIELDS, $requestBodyQuery);
             }
@@ -816,7 +840,7 @@ class Http
          *                      - 'verifySsl' A boolean whether SSL certificate should be verified
          *                      - 'destinationPath' If set, the response of the HTTP request should be saved to this file
          * @param string &$response The response of the HTTP request, for example "{value: true}"
-         * @param string &$status The returned HTTP status code, for example "200"
+         * @param int &$status The returned HTTP status code, for example "200"
          * @param array &$headers The returned headers, eg array('Content-Length' => '5')
          */
         Piwik::postEvent('Http.sendHttpRequest.end', array($aUrl, $httpEventParams, &$response, &$status, &$headers));
@@ -837,7 +861,7 @@ class Http
         return http_build_query($params, '', '&');
     }
 
-    private static function buildHeadersForPost($requestBody)
+    private static function buildHeadersForPost(string $requestBody): string
     {
         $postHeader  = "Content-Type: application/x-www-form-urlencoded\r\n";
         $postHeader .= "Content-Length: " . strlen($requestBody) . "\r\n";
@@ -939,12 +963,13 @@ class Http
                 throw new Exception(Piwik::translate('General_DownloadFail_HttpRequestFail'));
             }
 
-            Option::set($downloadOption, $expectedFileSize);
+            Option::set($downloadOption, (string)$expectedFileSize);
         } else {
-            $expectedFileSize = (int)Option::get($downloadOption);
+            $expectedFileSize = Option::get($downloadOption);
             if ($expectedFileSize === false) { // sanity check
                 throw new Exception("Trying to continue a download that never started?! That's not supposed to happen...");
             }
+            $expectedFileSize = (int)$expectedFileSize;
         }
 
         // if existing file is already big enough, then fail so we don't accidentally overwrite
@@ -970,8 +995,7 @@ class Http
         );
 
         if (
-            $result === false
-            || $result['status'] < 200
+            $result['status'] < 200
             || $result['status'] > 299
         ) {
             $result['data'] = self::truncateStr($result['data'], 1024);
@@ -1004,10 +1028,8 @@ class Http
      */
     public static function configCurlCertificate(&$ch)
     {
-        $general = Config::getInstance()->General;
-        if (!empty($general['custom_cacert_pem'])) {
-            $cacertPath = $general['custom_cacert_pem'];
-        } else {
+        $cacertPath = GeneralConfig::getConfigValue('custom_cacert_pem');
+        if (empty($cacertPath)) {
             $cacertPath = CaBundle::getBundledCaBundlePath();
         }
         @curl_setopt($ch, CURLOPT_CAINFO, $cacertPath);
@@ -1045,9 +1067,10 @@ class Http
      * @param string $destinationPath The path to download the file to.
      * @param int $tries (deprecated)
      * @param int $timeout The amount of seconds to wait before aborting the HTTP request.
+     * @return string|bool
      * @throws Exception if the response cannot be saved to `$destinationPath`, if the HTTP response cannot be sent,
      *                   if there are more than 5 redirects or if the request times out.
-     * @return bool `true` on success, throws Exception on failure
+     * @phpstan-return ($destinationPath is null ? false|string : bool)
      * @api
      */
     public static function fetchRemoteFile($url, $destinationPath = null, $tries = 0, $timeout = 10)
@@ -1064,7 +1087,7 @@ class Http
      * @param array $headers
      * @param string $line
      */
-    private static function parseHeaderLine(&$headers, $line)
+    private static function parseHeaderLine(&$headers, $line): void
     {
         $parts = explode(':', $line, 2);
         if (count($parts) == 1) {
@@ -1079,12 +1102,9 @@ class Http
          * With HTTP/2 Cloudflare is passing headers in lowercase (e.g. 'content-type' instead of 'Content-Type')
          * which breaks any code which uses the header data.
          */
-        if (version_compare(PHP_VERSION, '5.5.16', '>=')) {
-            // Passing a second arg to ucwords is not supported by older versions of PHP
-            $camelName = ucwords($name, '-');
-            if ($camelName !== $name) {
-                $headers[$camelName] = trim($value);
-            }
+        $camelName = ucwords($name, '-');
+        if ($camelName !== $name) {
+            $headers[$camelName] = trim($value);
         }
     }
 
@@ -1127,14 +1147,14 @@ class Http
      * Returns Proxy to use for connecting via HTTP to given URL
      *
      * @param string $url
-     * @return array
+     * @return array{0: string|null, 1: string|null, 2: string|null, 3: string|null}
      */
-    private static function getProxyConfiguration($url)
+    private static function getProxyConfiguration($url): array
     {
         $hostname = UrlHelper::getHostFromUrl($url);
 
         if (Url::isLocalHost($hostname)) {
-            return array(null, null, null, null);
+            return [null, null, null, null];
         }
 
         // proxy configuration
@@ -1149,7 +1169,7 @@ class Http
             $excludes = array_map('trim', $excludes);
             $excludes = array_filter($excludes);
             if (in_array($hostname, $excludes)) {
-                return array(null, null, null, null);
+                return [null, null, null, null];
             }
         }
 

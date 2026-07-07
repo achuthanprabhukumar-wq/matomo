@@ -61,10 +61,7 @@
       class="loadingPiwik"
       style="display:none;"
     >
-      <img
-        src="plugins/Morpheus/images/loading-blue.gif"
-        :alt="translate('General_LoadingData')"
-      />
+      <MatomoLoader />
       {{ translate('General_LoadingData') }}
     </div>
   </div>
@@ -72,11 +69,12 @@
 
 <script lang="ts">
 import { defineComponent, computed } from 'vue';
-import { AnyComparison } from './Comparisons.store';
+import type { AnyComparison } from './Comparisons.store';
 import ComparisonsStoreInstance from './Comparisons.store.instance';
 import Matomo from '../Matomo/Matomo';
 import MatomoUrl from '../MatomoUrl/MatomoUrl';
 import AjaxHelper from '../AjaxHelper/AjaxHelper';
+import MatomoLoader from '../MatomoLoader/MatomoLoader';
 import { translate } from '../translate';
 import Tooltips from '../Tooltips/Tooltips';
 
@@ -101,6 +99,9 @@ interface ComparisonState {
 
 export default defineComponent({
   props: {
+  },
+  components: {
+    MatomoLoader,
   },
   directives: {
     Tooltips,

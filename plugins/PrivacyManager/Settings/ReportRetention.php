@@ -9,13 +9,19 @@ use Piwik\Settings\Interfaces\SettingValueInterface;
 use Piwik\Settings\Interfaces\Traits\PolicyComparisonTrait;
 use Piwik\Settings\Interfaces\Traits\Getters\ConfigGetterTrait;
 use Piwik\Policy\CnilPolicy;
+use Piwik\Settings\Interfaces\OptionSettingInterface;
+use Piwik\Settings\Interfaces\Traits\Getters\OptionGetterTrait;
 
 /**
  * @implements ConfigSettingInterface<int|null>
  * @implements PolicyComparisonInterface<int|null>
  * @implements SettingValueInterface<int|null>
  */
-class ReportRetention implements ConfigSettingInterface, PolicyComparisonInterface, SettingValueInterface
+class ReportRetention implements
+    OptionSettingInterface,
+    ConfigSettingInterface,
+    PolicyComparisonInterface,
+    SettingValueInterface
 {
     /**
      * @use ConfigGetterTrait<int|null>
@@ -26,6 +32,8 @@ class ReportRetention implements ConfigSettingInterface, PolicyComparisonInterfa
      * @use PolicyComparisonTrait<int|null>
      */
     use PolicyComparisonTrait;
+
+    use OptionGetterTrait;
 
     /**
      * @var int|null
@@ -52,6 +60,11 @@ class ReportRetention implements ConfigSettingInterface, PolicyComparisonInterfa
         return 'Deletelogs';
     }
 
+    protected static function getOptionName(?int $idSite = null): string
+    {
+        return 'delete_logs_older_than';
+    }
+
     public static function getTitle(): string
     {
         return Piwik::translate('PrivacyManager_RetentionPeriodPolicySettingTitle');
@@ -71,7 +84,7 @@ class ReportRetention implements ConfigSettingInterface, PolicyComparisonInterfa
     public static function getPolicyRequirements(): array
     {
         $policyValues = [];
-        $policyValues[CnilPolicy::class] = 180;
+        $policyValues[CnilPolicy::class] = 759;
 
         return $policyValues;
     }
@@ -79,7 +92,11 @@ class ReportRetention implements ConfigSettingInterface, PolicyComparisonInterfa
     public static function getInstance(?int $idSite = null): self
     {
         $values = self::getPolicyRequiredValues($idSite);
-        $values['config'] = self::getConfigValue();
+        $optionValue = self::getOptionValue($idSite);
+        $values['option'] = isset($optionValue) ? (int) $optionValue : null;
+        if (is_null($values['option'])) {
+            $values['config'] = self::getConfigValue();
+        }
         $strictest = self::getStrictestValueFromArray($values);
         return new self($strictest);
     }

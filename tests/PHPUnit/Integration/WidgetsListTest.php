@@ -44,14 +44,14 @@ class WidgetsListTest extends IntegrationTestCase
             'Dashboard_Dashboard' => 1,
             'General_Actions' => 26,
             'General_KpiMetric' => 1,
-            'General_Visitors' => 30,
-            'SEO' => 1,
+            'General_Visitors' => 31,
             'Goals_Goals' => 3,
             'Insights_WidgetCategory' => 2,
             'ExampleUI_UiFramework' => 8,
             'Referrers_Referrers' => 11,
             'About Matomo' => 11,
             'Marketplace_Marketplace' => 3,
+            'General_AIAssistants' => 16,
 
             // widgets provided by Professional Services plugin for plugin promos
             'ProfessionalServices_PromoAbTesting' => 1,
@@ -146,7 +146,7 @@ class WidgetsListTest extends IntegrationTestCase
 
         // number of main categories
         $widgetsPerCategory = $this->getWidgetsPerCategory($widgets);
-        $this->assertEquals(count($widgetsPerCategory), 11);
+        $this->assertCount(11, $widgetsPerCategory);
 
         // no professional services promos
         foreach ($widgetsPerCategory as $category => $categoryWidgets) {
@@ -165,18 +165,18 @@ class WidgetsListTest extends IntegrationTestCase
 
         $this->assertCount(20, $this->getWidgetsPerCategory($list));
 
-        $list->remove('SEO', 'NoTeXiStInG');
+        $list->remove('General_KpiMetric', 'NoTeXiStInG');
 
         $perCategory = $this->getWidgetsPerCategory($list);
         $this->assertCount(20, $perCategory);
 
-        $this->assertArrayHasKey('SEO', $perCategory);
-        $this->assertCount(1, $perCategory['SEO']);
+        $this->assertArrayHasKey('General_KpiMetric', $perCategory);
+        $this->assertCount(1, $perCategory['General_KpiMetric']);
 
-        $list->remove('SEO', 'SEO_SeoRankings');
+        $list->remove('General_KpiMetric', 'General_KpiMetric');
 
         $perCategory = $this->getWidgetsPerCategory($list);
-        $this->assertArrayNotHasKey('SEO', $perCategory);
+        $this->assertArrayNotHasKey('General_KpiMetric', $perCategory);
         $this->assertArrayHasKey('About Matomo', $perCategory);
 
         $list->remove('About Matomo');

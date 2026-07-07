@@ -8,7 +8,6 @@
  */
 
 describe("UserSettings", function () {
-    this.timeout(0);
     this.fixture = "Piwik\\Plugins\\UsersManager\\tests\\Fixtures\\ManyUsersPastDate";
 
     var userSettingsUrl = "?module=UsersManager&action=userSettings";
@@ -115,21 +114,34 @@ describe("UserSettings", function () {
         expect(await page.screenshotSelector('.admin')).to.matchImage('load_security_no_tokens');
     });
 
-    it('should show user settings page', async function () {
+    it('should show user settings page with all theme mode options', async function () {
         await page.goto(userSettingsUrl);
-        expect(await page.screenshotSelector('.admin')).to.matchImage('load');
+        await page.waitForSelector('input[name="themeMode"][value="auto"]');
+
+        const themeModes = await page.evaluate(() => $('input[name="themeMode"]').map(function () {
+            return $(this).val();
+        }).get());
+        expect(themeModes).to.include.members(['light', 'dark', 'auto']);
+
+        const themeModeHelp = await page.evaluate(() => $('#themeModeHelp').text());
+        expect(themeModeHelp).to.contain('Match browser');
+        expect(themeModeHelp).to.contain('Custom theme');
     });
 
     it('should allow user to subscribe to newsletter', async function () {
         await page.click('#newsletterSignupCheckbox');
         await page.click('#newsletterSignupBtn input');
         await page.waitForNetworkIdle();
+        await page.waitForFunction(() => !$('#newsletterSignup').is(':visible'));
         expect(await page.screenshotSelector('.pageWrap')).to.matchImage('signup_success');
     });
 
     it('should not prompt user to subscribe to newsletter again', async function () {
         // Assumes previous test has clicked on the signup button - so we shouldn't see it this time
         await page.goto(userSettingsUrl);
+        const isNewsletterVisible = await page.evaluate(() => $('#newsletterSignup').is(':visible'));
+        expect(isNewsletterVisible, 'newsletter signup should stay hidden after signup').to.equal(false);
+
         expect(await page.screenshotSelector('.admin')).to.matchImage('already_signed_up');
     });
 

@@ -37,6 +37,13 @@ class Loader
     private static $archivingDepth = 0;
 
     /**
+     * Tracks whether the current prepareArchive run reused an existing archive instead of processing.
+     *
+     * @var boolean
+     */
+    private $didReuseArchive = false;
+
+    /**
      * @var Parameters
      */
     protected $params;
@@ -103,6 +110,11 @@ class Loader
         return Context::changeIdSite($this->params->getSite()->getId(), function () use ($pluginName) {
             try {
                 ++self::$archivingDepth;
+
+                if (self::$archivingDepth === 1) {
+                    $this->didReuseArchive = false;
+                }
+
                 return $this->prepareArchiveImpl($pluginName);
             } finally {
                 --self::$archivingDepth;
@@ -135,6 +147,7 @@ class Loader
         // load existing data from archive
         $data = $this->loadArchiveData();
         if (sizeof($data) == 2) {
+            $this->didReuseArchive = true;
             return $data;
         }
         [$idArchives, $visits, $visitsConverted, $foundRecords] = $data;
@@ -153,6 +166,7 @@ class Loader
                 $data = $this->loadArchiveData();
 
                 if (sizeof($data) == 2) {
+                    $this->didReuseArchive = true;
                     return $data;
                 }
 
@@ -169,9 +183,11 @@ class Loader
 
 
     /**
-     * @param $visits
-     * @param $visitsConverted
-     * @return int[]
+     * @param bool|int|float $visits
+     * @param bool|int|float $visitsConverted
+     * @param array|false $existingArchives
+     * @param array|null $foundRecords
+     * @return array{0: array, 1: bool|int|float}
      */
     protected function insertArchiveData($visits, $visitsConverted, $existingArchives, $foundRecords)
     {
@@ -211,7 +227,7 @@ class Loader
     }
 
     /**
-     * @return array|false[]
+     * @return array
      */
     protected function loadArchiveData()
     {
@@ -265,7 +281,8 @@ class Loader
     /**
      * Prepares the core metrics if needed.
      *
-     * @param $visits
+     * @param bool|int|float $visits
+     * @param bool|int|float $visitsConverted
      * @return array
      */
     protected function prepareCoreMetricsArchive($visits, $visitsConverted)
@@ -542,6 +559,11 @@ class Loader
         ];
     }
 
+    public function didReuseArchive(): bool
+    {
+        return $this->didReuseArchive;
+    }
+
     private function hasChildArchivesInPeriod($idSite, Period $period): bool
     {
         $cacheKey = CacheId::siteAware('Archiving.hasChildArchivesInPeriod.' . $period->getRangeString(), [$idSite]);
@@ -678,6 +700,9 @@ class Loader
             $currentPeriod = $period;
             do {
                 $parentPeriodLabel = $currentPeriod->getParentPeriodLabel();
+                if (!Period\Factory::isPeriodEnabledForAPI($parentPeriodLabel)) {
+                    $parentPeriodLabel = null;
+                }
                 if ($parentPeriodLabel) {
                     $parentPeriod = Period\Factory::build($parentPeriodLabel, $date1);
                     $cacheKey = CacheId::siteAware(sprintf($cacheKeyStr, $parentPeriod->getLabel(), $parentPeriod->getRangeString()), [$idSite]);
